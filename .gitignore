@@ -1,0 +1,13 @@
+# NUNCA subir las keys ni datos locales
+.streamlit/secrets.toml
+
+# datos generados localmente (se crean al correr)
+consultas.db
+chroma_db/
+docs/
+
+# python
+__pycache__/
+*.pyc
+venv/
+.venv/
