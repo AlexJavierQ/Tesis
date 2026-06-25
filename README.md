@@ -70,7 +70,8 @@ LLM_PROVIDER = "gemini"   # requiere GEMINI_API_KEY real (AIza...)
 python pruebas_herramientas.py
 ```
 Compara embeddings (MiniLM vs e5), lector de PDF (PyMuPDF vs pypdf), tamaño de
-chunk y latencia. Ver `RESULTADOS_PRUEBAS.md` y `ALTERNATIVAS_LLM.md`.
+chunk y latencia. Resultados y comparativas en la carpeta `documentacion/`
+(`RESULTADOS_PRUEBAS.md`, `ALTERNATIVAS_LLM.md`, y los `.docx` de justificación y guía).
 
 ## Notas
 

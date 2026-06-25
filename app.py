@@ -66,7 +66,7 @@ def abrir(path, fuente, pagina=1):
     st.session_state.ver_doc = {"path": path, "fuente": fuente, "pagina": int(pagina)}
 
 
-# ---------------- registro anonimo (con ambito = donde se pregunto) ----------------
+# ---------------- registro anonimo  ----------------
 def _conn():
     c = sqlite3.connect(DB, check_same_thread=False)
     c.execute("CREATE TABLE IF NOT EXISTS consultas "
@@ -130,7 +130,7 @@ def render_metricas(filas):
     if not filas:
         st.info("Aún no hay consultas en este ámbito."); return
     temas = agrupar_temas(tuple(f[1] for f in filas))
-    st.markdown("**🔁 Temas más consultados** (agrupados por significado, no por texto exacto)")
+    st.markdown("** Temas más consultados** (agrupados por significado, no por texto exacto)")
     df = pd.DataFrame({"tema": [t["tema"][:40] for t in temas[:8]],
                        "veces": [t["n"] for t in temas[:8]]}).set_index("tema")
     st.bar_chart(df)
@@ -139,7 +139,7 @@ def render_metricas(filas):
         for t in temas[:8]:
             st.write(f"• **{t['tema']}** — {t['n']} consultas en {t['variantes']} forma(s) distinta(s)")
     sin = list(dict.fromkeys(f[1] for f in filas if not f[2]))
-    st.markdown("**❓ Preguntas sin respaldo** (vacíos a cubrir)")
+    st.markdown("** Preguntas sin respaldo** (vacíos a cubrir)")
     for s in sin[:8]:
         st.write("• " + s)
     with st.expander("Ver consultas individuales (anónimas)"):
@@ -149,7 +149,7 @@ def render_metricas(filas):
 
 
 # ---------------- ayuda ----------------
-AYUDA = ("Soy el asistente de Prácticum. Respondo con los **documentos oficiales**.\n\n"
+AYUDA = ("Soy el asistente de Prácticum.**.\n\n"
          "Por ejemplo: *¿Cuántas horas necesito?*, *¿Cuál es el plazo del informe?*, "
          "*¿Qué formato uso?*, *¿Cuál es la nota mínima?*\n\n"
          "Si pregunto algo que no está en los documentos, te derivo a la coordinación.")
@@ -164,7 +164,7 @@ def responder(q, api_key, scopes):
 
 
 # ---------------- UI ----------------
-st.set_page_config(page_title="Asistente de Practicum", page_icon="🎓", layout="centered")
+st.set_page_config(page_title="Asistente de Practicum", page_icon="", layout="centered")
 st.markdown("""
 <style>
 #MainMenu, footer {visibility: hidden;}
@@ -173,7 +173,7 @@ st.markdown("""
  margin:-1rem -1rem 1rem -1rem; box-shadow:0 2px 8px rgba(0,0,0,.15);}
 .topbar small {font-weight:400; font-size:13px; opacity:.85;}
 </style>
-<div class="topbar">🎓 Asistente de Prácticum &nbsp;<small>UTPL</small></div>
+<div class="topbar"> Asistente Inteligente &nbsp;<small>UTPL</small></div>
 """, unsafe_allow_html=True)
 
 api_key = get_api_key()
@@ -206,7 +206,7 @@ with st.sidebar:
     carrs = rag.carreras() or ["computacion"]
     carrera = st.selectbox("Carrera", carrs)
     rol = st.radio("Entrar como:", ["Estudiante", "Docente", "Coordinacion"])
-    st.caption(f"⚙️ Motor: {llm.PROVIDER} · {llm.MODEL}")
+    st.caption(f" Motor: {llm.PROVIDER} · {llm.MODEL}")
 
 # al cambiar de rol, cierra el visor (evita que se abra solo)
 if st.session_state.get("_prev_rol") != rol:
@@ -242,7 +242,7 @@ if rol == "Estudiante":
 
     if "hist" not in st.session_state:
         st.session_state.hist = []
-    st.caption("Pregunta sobre trámites, horas, plazos y formatos. Respondo solo con los documentos.")
+    st.caption("Pregunta sobre trámites, horas, plazos y formatos.")
     for i, m in enumerate(st.session_state.hist):
         pintar(m, i)
     if not st.session_state.hist:
@@ -268,8 +268,8 @@ elif rol == "Docente":
     with st.sidebar:
         ok = st.text_input("Contraseña docente", type="password") == PASS_DOCENTE
     if not ok:
-        st.warning("Ingresa la contraseña de docente. (demo: docente2026)"); st.stop()
-    st.subheader(f"👩‍🏫 Docente · {carrera}")
+        st.warning("Ingresa la contraseña de docente. (docente2026)"); st.stop()
+    st.subheader(f" Docente · {carrera}")
     nuevo = st.text_input("Crear nuevo curso (nombre)")
     if st.button("➕ Crear curso") and nuevo.strip():
         os.makedirs(rag.folder_curso(carrera, nuevo.strip()), exist_ok=True)
@@ -279,11 +279,11 @@ elif rol == "Docente":
         st.info("Aún no hay cursos. Crea uno arriba."); st.stop()
     curso = st.selectbox("Curso:", cs)
     scope = rag.scope_curso(carrera, curso)
-    tab1, tab2 = st.tabs(["📄 Documentos", "📊 Métricas de mi aula"])
+    tab1, tab2 = st.tabs(["📄 Documentos", "Métricas del aula"])
     with tab1:
         st.caption("Estos documentos solo afectan al chatbot de este curso.")
         sub = st.file_uploader(f"Subir PDF a '{curso}'", type="pdf")
-        if sub and st.button("📤 Subir e indexar"):
+        if sub and st.button(" Subir e indexar"):
             path = guardar_subida(sub, scope)
             with st.spinner("Indexando..."):
                 n = ingest.add_pdf(path, scope)
@@ -296,7 +296,7 @@ elif rol == "Docente":
             if c3.button("🗑", key="x" + nombre):
                 ingest.remove_doc(nombre, scope); os.remove(path); st.rerun()
     with tab2:
-        st.caption(f"🔒 Anónimo · solo las consultas hechas en el curso '{curso}'.")
+        st.caption(f" Anónimo · solo las consultas hechas en el curso '{curso}'.")
         render_metricas(consultas(exact=scope))
 
 # ===================== COORDINACION =====================
@@ -304,14 +304,14 @@ else:
     with st.sidebar:
         ok = st.text_input("Contraseña coordinación", type="password") == PASS_COORD
     if not ok:
-        st.warning("Ingresa la contraseña de coordinación. (demo: utpl2026)"); st.stop()
-    st.subheader(f"🏛️ Coordinación · {carrera}")
-    tab1, tab2 = st.tabs(["📄 Reglamentos", "📊 Métricas"])
+        st.warning("Ingresa la contraseña de coordinación.(utpl2026)"); st.stop()
+    st.subheader(f" Coordinación · {carrera}")
+    tab1, tab2 = st.tabs(["📄 Reglamentos", " Métricas"])
     with tab1:
         st.caption("Estos documentos afectan a TODOS los chats de la carrera.")
         scope = rag.scope_global(carrera)
         sub = st.file_uploader("Subir reglamento", type="pdf")
-        if sub and st.button("📤 Subir e indexar"):
+        if sub and st.button(" Subir e indexar"):
             path = guardar_subida(sub, scope)
             with st.spinner("Indexando..."):
                 n = ingest.add_pdf(path, scope)
@@ -324,5 +324,5 @@ else:
             if c3.button("🗑", key="xg" + nombre):
                 ingest.remove_doc(nombre, scope); os.remove(path); st.rerun()
     with tab2:
-        st.caption(f"🔒 Anónimo · todas las consultas de la carrera '{carrera}'.")
+        st.caption(f" Anónimo · todas las consultas de la carrera '{carrera}'.")
         render_metricas(consultas(prefix=carrera + "|"))
