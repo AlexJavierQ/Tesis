@@ -15,7 +15,7 @@ import llm
 BASE = os.path.dirname(__file__)
 DOCS = os.path.join(BASE, "docs")
 GEMINI_MODEL = llm.MODEL          # re-exporta para la API (/salud)
-TOP_K = 4
+TOP_K = 5
 THRESHOLD = 0.65
 
 
@@ -112,4 +112,10 @@ def answer(question, api_key=None, scopes=None):
     if not texto:
         # sin API key o el modelo fallo -> mostramos lo recuperado (no se rompe)
         texto = "(Según los documentos oficiales:)\n\n" + ctx_breve
+    else:
+        low = texto.lower()
+        # si el modelo NO encontro la respuesta en el contexto, no mostramos citas
+        # (coherencia: nada de "no tengo informacion" + fuentes citadas)
+        if "coordinaci" in low and ("no tengo" in low or "no hay informaci" in low or "no cuento" in low):
+            return {"respuesta": texto, "fuentes": [], "citas": [], "con_respaldo": False}
     return {"respuesta": texto, "fuentes": fuentes_str, "citas": citas, "con_respaldo": True}

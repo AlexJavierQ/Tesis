@@ -19,7 +19,7 @@ import ingest
 DB = os.path.join(os.path.dirname(__file__), "consultas.db")
 
 app = FastAPI(title="API Asistente de Practicum", version="1.0")
-# CORS abierto para que cualquier front (la pagina de la U) pueda consumir la API
+# CORS abierto para que cualquier front pueda consumir la API
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 

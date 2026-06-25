@@ -60,9 +60,9 @@ REGLAMENTO_PRACTICUM = """REGLAMENTO DE PRACTICUM - PRACTICAS PREPROFESIONALES (
 Las practicas preprofesionales requieren 240 horas en total, distribuidas en dos niveles:
 Practicum 1 (120 horas) y Practicum 2 (120 horas).
 
-2. REQUISITO PARA INICIAR
-Para iniciar Practicum 1, el estudiante debe haber aprobado al menos el 60% de la malla
-curricular.
+2. PRERREQUISITO PARA INICIAR
+Para iniciar Practicum 1, el estudiante debe haber aprobado el quinto semestre de la
+carrera. Para iniciar Practicum 2, debe haber aprobado Practicum 1.
 
 3. PLAZOS DE ENTREGA
 El informe final de cada practica se entrega en un plazo maximo de 8 dias calendario
