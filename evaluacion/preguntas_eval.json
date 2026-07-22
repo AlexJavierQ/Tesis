@@ -1,0 +1,122 @@
+[
+  {
+    "_LEEME": "Banco de evaluacion del sistema. La verdad de referencia esta construida sobre el corpus FICTICIO de desarrollo (ver make_demo_pdf.py). Sirve para desarrollar, depurar y calibrar. NO sustituye a una evaluacion sobre los reglamentos oficiales: preguntas y corpus escritos por la misma persona no demuestran capacidad de generalizacion.",
+    "_campos": {
+      "contiene": "texto que DEBE aparecer en el fragmento correcto (vacio si esta fuera del corpus)",
+      "fuera_de_corpus": "true si el sistema DEBE abstenerse",
+      "cercania": "lejana | media | cercana — solo fuera del corpus, mide el parecido al dominio"
+    },
+    "pregunta": "cuantas horas de practicas necesito en total",
+    "contiene": "240 horas",
+    "fuente": "Reglamento_de_Practicum.pdf"
+  },
+  { "pregunta": "cual es el total de horas del practicum", "contiene": "240 horas" },
+  { "pregunta": "cuantas horas debo completar para terminar las practicas", "contiene": "240 horas" },
+  { "pregunta": "cuantas horas son en practicum 1", "contiene": "120 horas" },
+  { "pregunta": "cuantas horas puedo dedicar por semana", "contiene": "20 horas semanales" },
+  { "pregunta": "cuantas horas al dia puedo hacer si tengo clases", "contiene": "4 horas diarias" },
+
+  { "pregunta": "que necesito aprobar antes de empezar practicum 1", "contiene": "quinto semestre" },
+  { "pregunta": "desde que semestre puedo hacer practicas", "contiene": "quinto semestre" },
+  { "pregunta": "cual es el prerrequisito de practicum 2", "contiene": "aprobado practicum 1" },
+  { "pregunta": "puedo hacer practicum 1 y practicum 2 al mismo tiempo", "contiene": "no se permite cursar ambos" },
+
+  { "pregunta": "me puedo convalidar horas de practicas por mi trabajo actual", "contiene": "convalidacion" },
+  { "pregunta": "que porcentaje de horas puedo convalidar si ya trabajo", "contiene": "50 por ciento" },
+  { "pregunta": "que documentos necesito para pedir convalidacion", "contiene": "certificado laboral" },
+
+  { "pregunta": "donde puedo hacer las practicas", "contiene": "convenio vigente" },
+  { "pregunta": "puedo hacer las practicas preprofesionales en el extranjero", "contiene": "convenio institucional" },
+  { "pregunta": "con cuanta anticipacion pido practicas en el exterior", "contiene": "60 dias" },
+  { "pregunta": "puedo cambiar de empresa a mitad del practicum", "contiene": "una sola vez por nivel" },
+  { "pregunta": "pierdo las horas si cambio de organizacion", "contiene": "horas cumplidas en la organizacion anterior se conservan" },
+  { "pregunta": "que pasa si la empresa incumple el convenio de practicas", "contiene": "5 dias habiles" },
+
+  { "pregunta": "me pagan un sueldo durante las practicas preprofesionales", "contiene": "no son remuneradas" },
+  { "pregunta": "la empresa puede darme dinero para transporte", "contiene": "movilidad" },
+  { "pregunta": "tengo seguro estudiantil mientras hago las practicas", "contiene": "seguro estudiantil de accidentes" },
+  { "pregunta": "el seguro me cubre si hago practicas fuera del pais", "contiene": "no se extiende a las practicas realizadas en el exterior" },
+  { "pregunta": "cuantas faltas puedo tener en las practicas", "contiene": "10 por ciento" },
+
+  { "pregunta": "cada cuanto me reuno con mi tutor", "contiene": "cada dos semanas" },
+  { "pregunta": "quien evalua mi informe", "contiene": "docente tutor" },
+  { "pregunta": "que hago si mi tutor no responde mis correos", "contiene": "coordinacion de practicum" },
+
+  { "pregunta": "que formato uso para el informe final", "contiene": "f-02" },
+  { "pregunta": "que formato se usa para el plan de practicas", "contiene": "f-01" },
+  { "pregunta": "donde consigo los formatos oficiales", "contiene": "portal de la carrera" },
+  { "pregunta": "en cuanto tiempo debo entregar el informe final", "contiene": "8 dias" },
+  { "pregunta": "cual es el plazo de entrega del informe", "contiene": "8 dias" },
+  { "pregunta": "por donde entrego el informe", "contiene": "entorno virtual" },
+  { "pregunta": "puedo pedir prorroga para entregar el informe de practicas", "contiene": "prorroga" },
+  { "pregunta": "cuantos dias extra me dan de prorroga", "contiene": "5 dias calendario" },
+
+  { "pregunta": "cual es la nota minima para aprobar el practicum", "contiene": "7 sobre 10" },
+  { "pregunta": "con cuanto apruebo las practicas", "contiene": "7 sobre 10" },
+  { "pregunta": "que pasa si repruebo el practicum", "contiene": "repite el componente" },
+  { "pregunta": "a quien consulto si el reglamento no resuelve mi duda", "contiene": "coordinacion de practicum" },
+
+  { "pregunta": "que titulo otorga la carrera de computacion", "contiene": "ingeniero en computacion" },
+  { "pregunta": "cuanto dura la carrera", "contiene": "nueve semestres" },
+  { "pregunta": "cual es la asistencia minima exigida", "contiene": "70 por ciento" },
+  { "pregunta": "cuantas matriculas tengo por asignatura", "contiene": "tres matriculas" },
+  { "pregunta": "quien autoriza la tercera matricula", "contiene": "coordinacion de la carrera" },
+  { "pregunta": "que necesito para graduarme", "contiene": "trabajo de integracion curricular" },
+  { "pregunta": "que es el trabajo de integracion curricular", "contiene": "director asignado" },
+  { "pregunta": "como solicito un certificado de matricula", "contiene": "secretaria" },
+  { "pregunta": "cuanto tardan en emitir un certificado", "contiene": "3 dias habiles" },
+
+  { "pregunta": "en que consiste practicum 1", "contiene": "tareas de apoyo", "curso": "Practicum 1" },
+  { "pregunta": "como se evalua practicum 1", "contiene": "bitacora semanal", "curso": "Practicum 1" },
+  { "pregunta": "cuanto vale el informe parcial en practicum 1", "contiene": "40 por ciento", "curso": "Practicum 1" },
+  { "pregunta": "que entregables tiene practicum 1", "contiene": "bitacora semanal", "curso": "Practicum 1" },
+  { "pregunta": "que aprendo en practicum 1", "contiene": "integrarse a un equipo", "curso": "Practicum 1" },
+
+  { "pregunta": "en que consiste practicum 2", "contiene": "proyecto aplicado", "curso": "Practicum 2" },
+  { "pregunta": "cuanto pesa el proyecto aplicado en practicum 2", "contiene": "50 por ciento", "curso": "Practicum 2" },
+  { "pregunta": "que entrego en practicum 2", "contiene": "informe final", "curso": "Practicum 2" },
+  { "pregunta": "tengo que presentar el proyecto en practicum 2", "contiene": "presentacion del proyecto", "curso": "Practicum 2" },
+
+  {
+    "_seccion": "FUERA DEL CORPUS - CERCANA: preguntas sobre practicum que el corpus NO responde. Banda dificil: el vocabulario coincide casi por completo con los documentos.",
+    "pregunta": "puedo hacer las practicas en modalidad remota desde casa",
+    "contiene": "", "fuera_de_corpus": true, "cercania": "cercana"
+  },
+  { "pregunta": "las horas de voluntariado cuentan para el practicum", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "puedo hacer practicas en dos empresas a la vez", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "que pasa si me enfermo durante las practicas", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "la nota del practicum cuenta para mi promedio de graduacion", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "hay cupo limitado de plazas por empresa", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "el tutor empresarial tiene que ser ingeniero titulado", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "puedo empezar las practicas durante las vacaciones", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "quien firma mi certificado de horas de practicas", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+  { "pregunta": "puedo hacer las practicas en una empresa de un familiar", "contiene": "", "fuera_de_corpus": true, "cercania": "cercana" },
+
+  {
+    "_seccion": "FUERA DEL CORPUS - MEDIA: tema universitario general, no cubierto por estos documentos.",
+    "pregunta": "cual es el horario de atencion de la biblioteca",
+    "contiene": "", "fuera_de_corpus": true, "cercania": "media"
+  },
+  { "pregunta": "cuanto cuesta la matricula del proximo ciclo", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "que beca puedo solicitar para transporte", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "cuando son las elecciones estudiantiles", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "donde queda el departamento de bienestar estudiantil", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "como me inscribo en los equipos deportivos de la universidad", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "hay convenios de intercambio con universidades de espana", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "cual es el correo del rector", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "cuando empiezan las vacaciones del ciclo", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+  { "pregunta": "donde puedo almorzar dentro del campus", "contiene": "", "fuera_de_corpus": true, "cercania": "media" },
+
+  {
+    "_seccion": "FUERA DEL CORPUS - LEJANA: sin relacion con el dominio. Control negativo.",
+    "pregunta": "quien gano el mundial de futbol de 2022",
+    "contiene": "", "fuera_de_corpus": true, "cercania": "lejana"
+  },
+  { "pregunta": "como preparo un ceviche de camaron", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" },
+  { "pregunta": "cual es la capital de australia", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" },
+  { "pregunta": "cuanto cuesta un pasaje de avion a madrid", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" },
+  { "pregunta": "que pelicula gano el oscar este ano", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" },
+  { "pregunta": "como cambio el aceite de mi carro", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" },
+  { "pregunta": "cual es el pronostico del clima para manana", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" },
+  { "pregunta": "escribeme un poema sobre el mar", "contiene": "", "fuera_de_corpus": true, "cercania": "lejana" }
+]

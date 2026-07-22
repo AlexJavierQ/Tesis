@@ -8,7 +8,7 @@ import os
 import sqlite3
 import datetime as dt
 
-DB = os.path.join(os.path.dirname(__file__), "consultas.db")
+DB = os.path.join(os.path.dirname(__file__), "datos", "consultas.db")
 GLOBAL = "computacion|global"
 P1 = "computacion|curso:Practicum 1"
 REG_P = "Reglamento_de_Practicum.pdf (pag. 1)"

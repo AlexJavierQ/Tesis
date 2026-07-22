@@ -3,35 +3,46 @@
 ADAPTADOR del modelo de lenguaje (LLM). Aísla el proveedor.
 Cambiar de IA = una variable de entorno LLM_PROVIDER, sin tocar nada más.
 
-  LLM_PROVIDER=gemini   (por defecto)  -> usa GEMINI_API_KEY   (~1000-1500 req/dia con key real)
-  LLM_PROVIDER=groq                    -> usa GROQ_API_KEY     (Llama 3.1 8B = 14.400 req/dia)
+  LLM_PROVIDER=groq     (por defecto)  -> usa GROQ_API_KEY     (Llama 3.1 8B = 14.400 req/dia)
+  LLM_PROVIDER=gemini                  -> usa GEMINI_API_KEY   (~1000-1500 req/dia con key real)
+
+El defecto es groq porque es el proveedor documentado en el TIC y el que tiene
+cuota gratuita suficiente para el piloto.
 
 NUNCA lanza: devuelve None si no hay key / se agota la cuota / falla,
 y el orquestador (rag.py) hace fallback a mostrar los documentos.
 """
 import os
 import time
+from nucleo import config  # carga secrets.toml al entorno antes de leer PROVIDER
 
-PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").lower()
+PROVIDER = os.environ.get("LLM_PROVIDER", "groq").lower()
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 GROQ_MODEL = "llama-3.1-8b-instant"          # 14.400 req/dia gratis; subir a llama-3.3-70b-versatile si se quiere mas calidad
 MODEL = GROQ_MODEL if PROVIDER == "groq" else GEMINI_MODEL   # para /salud
 
 
-def generate(prompt, api_key=None):
+TEMPERATURA = 0.2          # generacion: algo de flexibilidad al redactar
+TEMPERATURA_JUICIO = 0.0   # verificacion: es una decision binaria, sin creatividad
+
+
+def generate(prompt, api_key=None, temperatura=TEMPERATURA):
     if PROVIDER == "groq":
-        return _groq(prompt)
-    return _gemini(prompt, api_key)
+        return _groq(prompt, temperatura)
+    return _gemini(prompt, api_key, temperatura)
 
 
-def _gemini(prompt, api_key=None):
+def _gemini(prompt, api_key=None, temperatura=TEMPERATURA):
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
         return None
     try:
         import google.generativeai as genai
         genai.configure(api_key=key)
-        model = genai.GenerativeModel(GEMINI_MODEL)
+        model = genai.GenerativeModel(
+            GEMINI_MODEL,
+            generation_config={"temperature": temperatura},
+        )
         for intento in range(2):
             try:
                 r = model.generate_content(prompt)
@@ -48,7 +59,7 @@ def _gemini(prompt, api_key=None):
     return None
 
 
-def _groq(prompt):
+def _groq(prompt, temperatura=TEMPERATURA):
     key = os.environ.get("GROQ_API_KEY")
     if not key:
         return None
@@ -57,7 +68,7 @@ def _groq(prompt):
         r = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}"},
-            json={"model": GROQ_MODEL, "temperature": 0.2,
+            json={"model": GROQ_MODEL, "temperature": temperatura,
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=30,
         )

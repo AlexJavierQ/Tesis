@@ -1,0 +1,9 @@
+# Tema oscuro, alineado con la paleta de las otras propuestas (React y widget).
+# Mismos tokens: fondo #0e1421, superficie #1b2334, acento azul #6ea3fb, texto #e7ecf6.
+[theme]
+base = "dark"
+primaryColor = "#6ea3fb"
+backgroundColor = "#0e1421"
+secondaryBackgroundColor = "#1b2334"
+textColor = "#e7ecf6"
+font = "sans serif"

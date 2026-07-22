@@ -7,10 +7,10 @@ manteniendo las mismas funciones (add / query / delete / count / reset).
 import os
 import chromadb
 from chromadb.utils import embedding_functions
-import embeddings as emb
+from nucleo import embeddings as emb
 
 BASE = os.path.dirname(__file__)
-DB_DIR = os.path.join(BASE, "chroma_db")
+DB_DIR = os.path.join(os.path.dirname(BASE), "datos", "chroma_db")
 COLLECTION = "practicum"
 _col = None
 
@@ -53,7 +53,17 @@ def delete(where):
 
 
 def count():
-    return get_collection().count()
+    try:
+        return get_collection().count()
+    except Exception:
+        # la coleccion pudo ser recreada por un reindexado en otro proceso:
+        # se suelta la referencia cacheada y se reintenta una vez
+        global _col
+        _col = None
+        try:
+            return get_collection().count()
+        except Exception:
+            return 0
 
 
 def reset():

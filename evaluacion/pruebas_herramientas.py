@@ -17,7 +17,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 BASE = os.path.dirname(__file__)
-PDF = os.path.join(BASE, "docs", "computacion", "global", "reglamento_practicum_demo.pdf")
+PDF = os.path.join(os.path.dirname(BASE), "datos", "docs", "computacion", "global", "reglamento_practicum_demo.pdf")
 
 # preguntas de evaluacion -> palabra/frase que DEBE aparecer en el fragmento correcto
 EVAL = [

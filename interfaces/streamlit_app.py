@@ -2,37 +2,22 @@
 """
 Front demo (C3): estudiante (chat) + docente (cursos + metricas de su aula) +
 coordinacion (reglamentos + metricas de la carrera). Cliente del nucleo.
-Uso:  streamlit run app.py
+Uso:  streamlit run interfaces/streamlit_app.py
 """
 import os
-# carga proveedor LLM + keys desde secrets.toml ANTES de importar el motor
-try:
-    import tomllib
-    _sec = os.path.join(os.path.dirname(__file__), ".streamlit", "secrets.toml")
-    if os.path.exists(_sec):
-        with open(_sec, "rb") as _f:
-            for _k, _v in tomllib.load(_f).items():
-                if _k in ("LLM_PROVIDER", "GROQ_API_KEY", "GEMINI_API_KEY"):
-                    os.environ.setdefault(_k, str(_v))
-except Exception:
-    pass
+# permite ejecutar este archivo directamente: agrega la raiz del proyecto al path
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from nucleo import config          # carga proveedor LLM + keys ANTES de importar el motor  # noqa: F401
 
 import re
 import glob
-import sqlite3
-import datetime as dt
-from collections import Counter
-import numpy as np
 import streamlit as st
 import pandas as pd
-import rag
-import ingest
-import pdfreader
-import embeddings as emb
-import llm
+from nucleo import rag, ingest, pdfreader, metricas, llm
 
 BASE = os.path.dirname(__file__)
-DB = os.path.join(BASE, "consultas.db")
 PASS_DOCENTE = "docente2026"
 PASS_COORD = "utpl2026"
 SUGERIDAS = ["¿Cuántas horas necesito?", "¿Cuál es el plazo del informe?",
@@ -40,7 +25,7 @@ SUGERIDAS = ["¿Cuántas horas necesito?", "¿Cuál es el plazo del informe?",
 
 
 def get_api_key():
-    return os.environ.get("GEMINI_API_KEY") or None
+    return config.key_activa()
 
 
 def docs_de(scope):
@@ -63,83 +48,40 @@ def render(path, pagina):
 
 
 def abrir(path, fuente, pagina=1):
+    # la ingesta guarda rutas relativas a docs/; las absolutas vienen de listados locales
+    if path and not os.path.isabs(path):
+        path = os.path.join(rag.DOCS, path)
     st.session_state.ver_doc = {"path": path, "fuente": fuente, "pagina": int(pagina)}
 
 
-# ---------------- registro anonimo  ----------------
-def _conn():
-    c = sqlite3.connect(DB, check_same_thread=False)
-    c.execute("CREATE TABLE IF NOT EXISTS consultas "
-              "(ts TEXT, pregunta TEXT, respondida INTEGER, fuentes TEXT, ambito TEXT)")
-    cols = [r[1] for r in c.execute("PRAGMA table_info(consultas)").fetchall()]
-    if "ambito" not in cols:
-        c.execute("ALTER TABLE consultas ADD COLUMN ambito TEXT")
-    return c
+# ---------------- registro anonimo (logica compartida con la API) ----------------
+log_consulta = metricas.registrar
+consultas = metricas.listar
 
 
-def log_consulta(p, ok, fu, ambito):
-    c = _conn()
-    c.execute("INSERT INTO consultas VALUES (?,?,?,?,?)",
-              (dt.datetime.now().strftime("%Y-%m-%d %H:%M"), p, int(ok), " | ".join(fu), ambito))
-    c.commit(); c.close()
-
-
-def consultas(prefix=None, exact=None):
-    c = _conn()
-    if exact:
-        filas = c.execute("SELECT ts,pregunta,respondida,ambito FROM consultas WHERE ambito=? ORDER BY ts DESC", (exact,)).fetchall()
-    elif prefix:
-        filas = c.execute("SELECT ts,pregunta,respondida,ambito FROM consultas WHERE ambito LIKE ? ORDER BY ts DESC", (prefix + "%",)).fetchall()
-    else:
-        filas = c.execute("SELECT ts,pregunta,respondida,ambito FROM consultas ORDER BY ts DESC").fetchall()
-    c.close()
-    return filas
-
-
-# ---------------- agrupar preguntas por SIGNIFICADO (no por texto exacto) ----------------
 @st.cache_data(show_spinner=False)
 def agrupar_temas(preguntas, umbral=0.68):
-    cnt = Counter(p.strip() for p in preguntas)
-    unicas = [u for u in cnt if u]
-    if not unicas:
-        return []
-    vecs = emb.embed(unicas)                      # vectores normalizados
-    clusters = []
-    for i in range(len(unicas)):
-        mejor, sim_max = None, -1.0
-        for cl in clusters:
-            sim = float(np.dot(vecs[i], vecs[cl["rep"]]))
-            if sim > sim_max:
-                sim_max, mejor = sim, cl
-        if mejor and sim_max >= umbral:
-            mejor["miembros"].append(i); mejor["n"] += cnt[unicas[i]]
-        else:
-            clusters.append({"rep": i, "miembros": [i], "n": cnt[unicas[i]]})
-    out = []
-    for cl in clusters:
-        rep = max(cl["miembros"], key=lambda idx: cnt[unicas[idx]])
-        out.append({"tema": unicas[rep], "n": cl["n"], "variantes": len(cl["miembros"])})
-    return sorted(out, key=lambda x: -x["n"])
+    return metricas.agrupar_temas(preguntas, umbral)
 
 
 def render_metricas(filas):
     total = len(filas); resp = sum(f[2] for f in filas)
     a, b, c = st.columns(3)
     a.metric("Consultas", total); b.metric("Con respaldo", resp)
-    c.metric("% respaldo", f"{(100*resp/total):.0f}%" if total else "—")
+    c.metric("% respaldo", f"{(100*resp/total):.0f}%" if total else "n/d")
     if not filas:
         st.info("Aún no hay consultas en este ámbito."); return
     temas = agrupar_temas(tuple(f[1] for f in filas))
-    st.markdown("** Temas más consultados** (agrupados por significado, no por texto exacto)")
+    st.markdown("**Temas más consultados** (agrupados por significado, no por texto exacto)")
     df = pd.DataFrame({"tema": [t["tema"][:40] for t in temas[:8]],
                        "veces": [t["n"] for t in temas[:8]]}).set_index("tema")
     st.bar_chart(df)
     with st.expander("¿Cómo se agrupan los temas?"):
         st.caption("Preguntas que significan lo mismo se juntan aunque estén escritas distinto.")
         for t in temas[:8]:
-            st.write(f"• **{t['tema']}** — {t['n']} consultas en {t['variantes']} forma(s) distinta(s)")
+            st.write(f"• **{t['tema']}**: {t['n']} consultas en {t['variantes']} forma(s) distinta(s)")
     sin = list(dict.fromkeys(f[1] for f in filas if not f[2]))
-    st.markdown("** Preguntas sin respaldo** (vacíos a cubrir)")
+    st.markdown("**Preguntas sin respaldo** (vacíos a cubrir)")
     for s in sin[:8]:
         st.write("• " + s)
     with st.expander("Ver consultas individuales (anónimas)"):
@@ -148,40 +90,52 @@ def render_metricas(filas):
                      use_container_width=True, hide_index=True)
 
 
-# ---------------- ayuda ----------------
-AYUDA = ("Soy el asistente de Prácticum.**.\n\n"
-         "Por ejemplo: *¿Cuántas horas necesito?*, *¿Cuál es el plazo del informe?*, "
-         "*¿Qué formato uso?*, *¿Cuál es la nota mínima?*\n\n"
-         "Si pregunto algo que no está en los documentos, te derivo a la coordinación.")
-PATRONES = [r"\bhola\b", r"\bbuen[oa]s\b", r"\bayuda\b", r"puedo? pregunt", r"qu[eé] pregunt",
-            r"qu[eé] puedes? (hacer|responder|consultar)", r"c[oó]mo funciona", r"qui[eé]n eres"]
-
-
-def responder(q, api_key, scopes):
-    if any(re.search(p, q.lower()) for p in PATRONES):
-        return {"respuesta": AYUDA, "fuentes": [], "citas": [], "con_respaldo": True}
-    return rag.answer(q, api_key, scopes=scopes)
+# Los saludos, la cortesia y los seguimientos ("y cuantas horas", "explicamelo
+# de otra forma") los resuelve el nucleo (rag.answer), igual que en la API, para
+# que las tres propuestas se comporten igual.
+def responder(q, api_key, scopes, historial=None):
+    return rag.answer(q, api_key, scopes=scopes, historial=historial)
 
 
 # ---------------- UI ----------------
-st.set_page_config(page_title="Asistente de Practicum", page_icon="", layout="centered")
-st.markdown("""
+# Icono emblematico de la marca (la "chispa"), el mismo de las otras propuestas.
+CHISPA = ('<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" '
+          'stroke="{c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+          '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 '
+          '9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 '
+          '15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 '
+          '6.135a.5.5 0 0 1-.962 0z"/></svg>')
+
+st.set_page_config(page_title="Asistente de Practicum", layout="centered")
+st.markdown(f"""
 <style>
-#MainMenu, footer {visibility: hidden;}
-.topbar {position: sticky; top: 0; z-index: 9999; background:#1F3864; color:#fff;
- padding:12px 22px; font-size:20px; font-weight:700; border-radius:0 0 12px 12px;
- margin:-1rem -1rem 1rem -1rem; box-shadow:0 2px 8px rgba(0,0,0,.15);}
-.topbar small {font-weight:400; font-size:13px; opacity:.85;}
+#MainMenu, footer {{visibility: hidden;}}
+.topbar {{position: sticky; top: 0; z-index: 9999;
+ background: linear-gradient(135deg,#5b93f0,#3f68cf); color:#fff;
+ display:flex; align-items:center; gap:11px;
+ padding:13px 22px; border-radius:0 0 14px 14px;
+ margin:-1rem -1rem 1rem -1rem; box-shadow:0 2px 12px rgba(0,0,0,.35);}}
+.topbar b {{font-size:19px; font-weight:700;}}
+.topbar small {{font-weight:400; font-size:12px; opacity:.85;}}
 </style>
-<div class="topbar"> Asistente Inteligente &nbsp;<small>UTPL</small></div>
+<div class="topbar">{CHISPA.format(s=24, c='#fff')}
+ <b>Asistente de Prácticum</b><small>UTPL · Computación</small></div>
 """, unsafe_allow_html=True)
+
+# avatares como data-URI del mismo icono (Streamlit no acepta SVG inline en el avatar)
+import base64
+def _avatar(color):
+    svg = CHISPA.format(s=22, c=color)
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+AVATAR_BOT = _avatar("#6ea3fb")
+AVATAR_USER = _avatar("#b3bfd2")
 
 api_key = get_api_key()
 if "ver_doc" not in st.session_state:
     st.session_state.ver_doc = None
 
 
-@st.dialog("📄 Documento", width="large")
+@st.dialog("Documento", width="large")
 def modal_doc():
     vd = st.session_state.ver_doc
     if not vd or not os.path.exists(vd["path"]):
@@ -193,11 +147,11 @@ def modal_doc():
     if img:
         st.image(img, use_container_width=True)
     a, b, c = st.columns(3)
-    if a.button("◀ Anterior", disabled=pag <= 1, key="mp"):
+    if a.button("Anterior", disabled=pag <= 1, key="mp", use_container_width=True):
         st.session_state.ver_doc["pagina"] = pag - 1; st.rerun()
-    if b.button("Cerrar", key="mc"):
+    if b.button("Cerrar", key="mc", use_container_width=True):
         st.session_state.ver_doc = None; st.rerun()
-    if c.button("Siguiente ▶", disabled=pag >= total, key="mn"):
+    if c.button("Siguiente", disabled=pag >= total, key="mn", use_container_width=True):
         st.session_state.ver_doc["pagina"] = pag + 1; st.rerun()
 
 
@@ -206,7 +160,7 @@ with st.sidebar:
     carrs = rag.carreras() or ["computacion"]
     carrera = st.selectbox("Carrera", carrs)
     rol = st.radio("Entrar como:", ["Estudiante", "Docente", "Coordinacion"])
-    st.caption(f" Motor: {llm.PROVIDER} · {llm.MODEL}")
+    st.caption(f"Motor: {llm.PROVIDER} · {llm.MODEL}")
 
 # al cambiar de rol, cierra el visor (evita que se abra solo)
 if st.session_state.get("_prev_rol") != rol:
@@ -218,7 +172,7 @@ if st.session_state.ver_doc:
 
 
 def pintar(m, idx):
-    with st.chat_message(m["rol"], avatar=("🎓" if m["rol"] == "user" else "🤖")):
+    with st.chat_message(m["rol"], avatar=(AVATAR_USER if m["rol"] == "user" else AVATAR_BOT)):
         st.markdown(m["txt"])
         if m["rol"] == "assistant":
             if not m.get("con_respaldo", True):
@@ -226,7 +180,7 @@ def pintar(m, idx):
             cs = m.get("citas", [])
             cols = st.columns(max(1, len(cs)))
             for j, c in enumerate(cs):
-                if cols[j].button(f"📄 {c['fuente']} · p.{c['pagina']}", key=f"c{idx}_{j}", help="Ver la página"):
+                if cols[j].button(f"{c['fuente']} · p.{c['pagina']}", key=f"c{idx}_{j}", help="Ver la página"):
                     abrir(c["path"], c["fuente"], c["pagina"]); st.rerun()
 
 
@@ -255,12 +209,14 @@ if rol == "Estudiante":
     preg = st.chat_input("Escribe tu consulta...")
     q = preg or st.session_state.pop("pending_q", None)
     if q:
+        historial = list(st.session_state.hist)   # turnos previos (sin la pregunta actual)
         st.session_state.hist.append({"rol": "user", "txt": q})
         with st.spinner("Buscando en los documentos..."):
-            r = responder(q, api_key, scopes)
+            r = responder(q, api_key, scopes, historial=historial)
         st.session_state.hist.append({"rol": "assistant", "txt": r["respuesta"],
                                       "citas": r.get("citas", []), "con_respaldo": r.get("con_respaldo", True)})
-        log_consulta(q, r.get("con_respaldo", True), r.get("fuentes", []), scopes[-1])
+        if not r.get("social"):   # saludos y cortesia no cuentan como consultas
+            log_consulta(q, r.get("con_respaldo", True), r.get("fuentes", []), scopes[-1])
         st.rerun()
 
 # ===================== DOCENTE =====================
@@ -269,9 +225,9 @@ elif rol == "Docente":
         ok = st.text_input("Contraseña docente", type="password") == PASS_DOCENTE
     if not ok:
         st.warning("Ingresa la contraseña de docente. (docente2026)"); st.stop()
-    st.subheader(f" Docente · {carrera}")
+    st.subheader(f"Docente · {carrera}")
     nuevo = st.text_input("Crear nuevo curso (nombre)")
-    if st.button("➕ Crear curso") and nuevo.strip():
+    if st.button("Crear curso") and nuevo.strip():
         os.makedirs(rag.folder_curso(carrera, nuevo.strip()), exist_ok=True)
         st.success(f"Curso '{nuevo}' creado."); st.rerun()
     cs = rag.cursos(carrera)
@@ -279,11 +235,11 @@ elif rol == "Docente":
         st.info("Aún no hay cursos. Crea uno arriba."); st.stop()
     curso = st.selectbox("Curso:", cs)
     scope = rag.scope_curso(carrera, curso)
-    tab1, tab2 = st.tabs(["📄 Documentos", "Métricas del aula"])
+    tab1, tab2 = st.tabs(["Documentos", "Métricas del aula"])
     with tab1:
         st.caption("Estos documentos solo afectan al chatbot de este curso.")
         sub = st.file_uploader(f"Subir PDF a '{curso}'", type="pdf")
-        if sub and st.button(" Subir e indexar"):
+        if sub and st.button("Subir e indexar"):
             path = guardar_subida(sub, scope)
             with st.spinner("Indexando..."):
                 n = ingest.add_pdf(path, scope)
@@ -291,12 +247,12 @@ elif rol == "Docente":
         for nombre, path in docs_de(scope):
             c1, c2, c3 = st.columns([6, 1, 1])
             c1.write("• " + nombre)
-            if c2.button("👁", key="v" + nombre):
+            if c2.button("Ver", key="v" + nombre):
                 abrir(path, nombre, 1); st.rerun()
-            if c3.button("🗑", key="x" + nombre):
+            if c3.button("Quitar", key="x" + nombre):
                 ingest.remove_doc(nombre, scope); os.remove(path); st.rerun()
     with tab2:
-        st.caption(f" Anónimo · solo las consultas hechas en el curso '{curso}'.")
+        st.caption(f"Anónimo · solo las consultas hechas en el curso '{curso}'.")
         render_metricas(consultas(exact=scope))
 
 # ===================== COORDINACION =====================
@@ -305,13 +261,13 @@ else:
         ok = st.text_input("Contraseña coordinación", type="password") == PASS_COORD
     if not ok:
         st.warning("Ingresa la contraseña de coordinación.(utpl2026)"); st.stop()
-    st.subheader(f" Coordinación · {carrera}")
-    tab1, tab2 = st.tabs(["📄 Reglamentos", " Métricas"])
+    st.subheader(f"Coordinación · {carrera}")
+    tab1, tab2 = st.tabs(["Reglamentos", "Métricas"])
     with tab1:
         st.caption("Estos documentos afectan a TODOS los chats de la carrera.")
         scope = rag.scope_global(carrera)
         sub = st.file_uploader("Subir reglamento", type="pdf")
-        if sub and st.button(" Subir e indexar"):
+        if sub and st.button("Subir e indexar"):
             path = guardar_subida(sub, scope)
             with st.spinner("Indexando..."):
                 n = ingest.add_pdf(path, scope)
@@ -319,10 +275,10 @@ else:
         for nombre, path in docs_de(scope):
             c1, c2, c3 = st.columns([6, 1, 1])
             c1.write("• " + nombre)
-            if c2.button("👁", key="vg" + nombre):
+            if c2.button("Ver", key="vg" + nombre):
                 abrir(path, nombre, 1); st.rerun()
-            if c3.button("🗑", key="xg" + nombre):
+            if c3.button("Quitar", key="xg" + nombre):
                 ingest.remove_doc(nombre, scope); os.remove(path); st.rerun()
     with tab2:
-        st.caption(f" Anónimo · todas las consultas de la carrera '{carrera}'.")
+        st.caption(f"Anónimo · todas las consultas de la carrera '{carrera}'.")
         render_metricas(consultas(prefix=carrera + "|"))
