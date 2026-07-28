@@ -13,6 +13,6 @@ venv/
 .venv/
 
 # frontend
-interfaces/web/node_modules/
-interfaces/web/dist/
-interfaces/web/.env.local
+interfaces/react/node_modules/
+interfaces/react/dist/
+interfaces/react/.env.local

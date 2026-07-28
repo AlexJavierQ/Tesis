@@ -7,7 +7,7 @@ Uso:  streamlit run interfaces/streamlit_app.py
 import os
 # permite ejecutar este archivo directamente: agrega la raiz del proyecto al path
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from nucleo import config          # carga proveedor LLM + keys ANTES de importar el motor  # noqa: F401
 

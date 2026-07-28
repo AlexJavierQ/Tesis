@@ -20,9 +20,9 @@ del anexo de frontend: React consume la API, el motor RAG se queda en Python).
 | Métricas y registro | `nucleo/metricas.py` | SQLite |
 | Configuración | `nucleo/config.py` | — |
 | API REST | `interfaces/api.py` | FastAPI |
-| Interfaz web | `interfaces/web/` | React + Vite |
+| Interfaz web | `interfaces/react/` | React + Vite |
 | Widget embebible | `interfaces/widget/` | JavaScript (sin build) |
-| Interfaz de respaldo | `interfaces/streamlit_app.py` | Streamlit |
+| Interfaz de respaldo | `interfaces/streamlit/streamlit_app.py` | Streamlit |
 
 Cada herramienta vive aislada en su adaptador: cambiar una es reimplementar un
 archivo, no tocar el sistema. Eso es lo que hace reproducibles las comparativas
@@ -33,7 +33,7 @@ de `evaluacion/pruebas_herramientas.py`.
 ```
 mvp_practicum/
   nucleo/          motor RAG y adaptadores (rag, embeddings, vectorstore, llm, pdfreader, ingest, config, metricas)
-  interfaces/      api.py + los tres frontends (web/ React, widget/, streamlit_app.py)
+  interfaces/      api.py + los tres frontends (react/, widget/, streamlit/)
   evaluacion/      banco de pruebas y evaluación del sistema
   datos/           docs/ (corpus), chroma_db/ (índice), consultas.db (métricas)
   documentacion/   notas técnicas y resultados
@@ -90,13 +90,13 @@ Documentación interactiva de la API: <http://localhost:8000/docs>
 ### 2. Frontend
 
 ```bash
-cd interfaces/web
+cd interfaces/react
 npm install
 npm run dev                        # queda en http://localhost:5173
 ```
 
-Si la API no corre en el puerto por defecto, copia `web/.env.example` como
-`web/.env.local` y ajusta `VITE_API_URL`.
+Si la API no corre en el puerto por defecto, copia `interfaces/react/.env.example` como
+`interfaces/react/.env.local` y ajusta `VITE_API_URL`.
 
 ## Roles
 
