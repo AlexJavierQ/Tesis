@@ -1,22 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-ADAPTADOR de embeddings. Aísla el modelo que convierte texto en vectores.
-Para cambiar de modelo (ej. MiniLM -> e5) solo cambias MODEL_NAME aquí;
-nada más del sistema se entera.
+ADAPTADOR de embeddings.
+
+Un "embedding" es un vector de numeros que representa el SIGNIFICADO de un texto.
+Textos parecidos -> vectores cercanos. Asi es como el sistema encuentra fragmentos
+relevantes para una pregunta.
+
+Modelo elegido: paraphrase-multilingual-MiniLM-L12-v2
+  - multilingue (funciona en espanol)
+  - ligero y rapido (comparado con e5, misma precision con menos peso)
+  - la salida es un vector de 384 numeros por texto
 """
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"   # <- cambiar aquí para probar otro
-_model = None
+MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+_modelo = None  # se carga una sola vez (tarda ~2s la primera)
 
 
-def model():
-    global _model
-    if _model is None:
-        _model = SentenceTransformer(MODEL_NAME)
-    return _model
+def modelo():
+    """Carga el modelo la primera vez que se usa (lazy)."""
+    global _modelo
+    if _modelo is None:
+        _modelo = SentenceTransformer(MODEL_NAME)
+    return _modelo
 
 
-def embed(texts):
-    """texts: list[str] -> matriz de vectores (numpy)."""
-    return model().encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+def embed(textos):
+    """Convierte una lista de textos en una lista de vectores."""
+    return modelo().encode(textos, normalize_embeddings=True)

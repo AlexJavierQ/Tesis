@@ -1,160 +1,130 @@
-# Asistente de Prácticum — MVP (RAG)
+# Asistente de Prácticum
 
-Plataforma web que responde consultas sobre Prácticum usando solo los documentos
-oficiales como fuente, citando de dónde sale cada respuesta y sin inventar.
+Chatbot que responde consultas sobre el Prácticum de Computación (UTPL)
+**usando solo los documentos oficiales** como fuente, y citando de dónde
+salió cada respuesta.
+
+Si el reglamento no lo dice, se abstiene y deriva a coordinación. No inventa.
 
 ## Arquitectura
 
-El backend Python expone una **API REST** y el frontend la consume por HTTP. Esa
-separación es la que permite cambiar de interfaz sin tocar el núcleo (propuesta 2
-del anexo de frontend: React consume la API, el motor RAG se queda en Python).
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Frontend                       │  React + Vite  │  Widget   │
+├─────────────────────────────────┴──────┬─────────┴───────────┤
+│  API REST (FastAPI)                     │  ← ambos hablan     │
+│                                         │    por HTTP con esta│
+├─────────────────────────────────────────┴────────────────────┤
+│  Núcleo RAG (Python)   [rag / ingest / vectorstore / llm /   │
+│                         embeddings / auth / metricas]         │
+├───────────────────────────────────────────────────────────────┤
+│  ChromaDB (vectores)  · SQLite (login + métricas)  · PDFs    │
+└───────────────────────────────────────────────────────────────┘
+```
 
-| Capa | Archivo | Herramienta |
-|---|---|---|
-| Embeddings | `nucleo/embeddings.py` | Sentence-Transformers (MiniLM multilingüe) |
-| Base vectorial | `nucleo/vectorstore.py` | ChromaDB |
-| LLM | `nucleo/llm.py` | Groq (Llama 3.1) / Gemini |
-| Lector PDF | `nucleo/pdfreader.py` | PyMuPDF |
-| Orquestador RAG | `nucleo/rag.py` | orquestación propia, sin framework |
-| Ingesta | `nucleo/ingest.py` | — |
-| Métricas y registro | `nucleo/metricas.py` | SQLite |
-| Configuración | `nucleo/config.py` | — |
-| API REST | `interfaces/api.py` | FastAPI |
-| Interfaz web | `interfaces/react/` | React + Vite |
-| Widget embebible | `interfaces/widget/` | JavaScript (sin build) |
-| Interfaz de respaldo | `interfaces/streamlit/streamlit_app.py` | Streamlit |
+## Puesta en marcha (un solo comando)
 
-Cada herramienta vive aislada en su adaptador: cambiar una es reimplementar un
-archivo, no tocar el sistema. Eso es lo que hace reproducibles las comparativas
-de `evaluacion/pruebas_herramientas.py`.
+```bash
+python -m venv venv
+venv\Scripts\activate                # Linux/Mac: source venv/bin/activate
+pip install -r requirements.txt
+
+# crea .streamlit/secrets.toml con tu GROQ_API_KEY (gratis en console.groq.com/keys)
+
+python arrancar.py
+```
+
+`arrancar.py` hace todo: genera el corpus de demo si falta, indexa los
+PDF si falta, siembra los usuarios demo, levanta la API en el puerto
+8000 y React en el puerto 5173.
+
+Abre <http://localhost:5173> y entra con `estudiante`/`demo2026`.
+
+## Usuarios de demostración
+
+| Usuario     | Contraseña  | Rol           |
+|-------------|-------------|---------------|
+| `estudiante` | `demo2026` | estudiante    |
+| `docente`    | `demo2026` | docente       |
+| `coord`      | `demo2026` | coordinación  |
+
+Se crean automáticamente la primera vez que arranca el sistema.
+
+## Roles y permisos
+
+| Acción                        | Estudiante | Docente | Coordinación |
+|-------------------------------|:---:|:---:|:---:|
+| Consultar en el chat          | ✓ | ✓ | ✓ |
+| Ver documentos                | ✓ | ✓ | ✓ |
+| Subir documentos a un curso   |   | ✓ | ✓ |
+| Subir reglamentos generales   |   |   | ✓ |
+| Ver métricas de un curso      |   | ✓ | ✓ |
+| Ver métricas de toda la carrera |   |   | ✓ |
+
+El widget (`interfaces/widget/`) es **público** (sin login), pensado
+para integrarse en el portal universitario donde el estudiante ya está.
+
+## Otras utilidades
+
+- `python verificar.py` — smoke test del backend (~15 s, sin GUI).
+- `python revisar_pdf.py <ruta.pdf>` — valida si un PDF cumple los
+  lineamientos antes de subirlo.
+
+## Documentación
+
+- [Alcances del sistema](documentacion/ALCANCES.md) — qué está dentro y
+  qué queda fuera, con justificación. **Léelo antes de la sustentación.**
+- [Formato de los documentos](documentacion/FORMATO_DOCUMENTOS.md) —
+  lineamientos que deben cumplir los PDFs que se suban al sistema.
+- [Guía de aprendizaje](documentacion/GUIA_APRENDIZAJE.md) — cada archivo
+  explicado línea por línea. **Empieza aquí para estudiar el código.**
+- [Diseño de base de datos](documentacion/DISENO_BD.md) — diagramas ER.
+- [Diseño de arquitectura](documentacion/DISENO_ARQUITECTURA.md) —
+  diagramas C4, flujos, secuencia.
+- [Anti-alucinación](documentacion/ANTIALUCINACION.md) — experimentos.
+- [Evaluación del sistema](documentacion/EVALUACION_SISTEMA.md) —
+  métricas sobre el corpus.
+- [Frontends](documentacion/FRONTENDS.md) — comparación de las interfaces.
 
 ## Estructura del proyecto
 
 ```
 mvp_practicum/
-  nucleo/          motor RAG y adaptadores (rag, embeddings, vectorstore, llm, pdfreader, ingest, config, metricas)
-  interfaces/      api.py + los tres frontends (react/, widget/, streamlit/)
-  evaluacion/      banco de pruebas y evaluación del sistema
-  datos/           docs/ (corpus), chroma_db/ (índice), consultas.db (métricas)
-  documentacion/   notas técnicas y resultados
-  make_demo_pdf.py, seed_consultas.py   scripts de datos de demostración
+├── arrancar.py                    UN comando para arrancar todo
+├── verificar.py                   smoke test (opcional)
+├── revisar_pdf.py                 valida PDFs (opcional)
+├── nucleo/                        motor RAG y adaptadores
+│   ├── config.py                  carga la API key
+│   ├── pdfreader.py               lee PDFs (PyMuPDF)
+│   ├── embeddings.py              MiniLM multilingüe
+│   ├── vectorstore.py             ChromaDB
+│   ├── llm.py                     Groq (gpt-oss-20b)
+│   ├── ingest.py                  procesa PDFs -> chunks -> índice
+│   ├── rag.py                     orquestador
+│   ├── auth.py                    login (usuarios + sesiones)
+│   └── metricas.py                registro anónimo
+├── interfaces/
+│   ├── api.py                     FastAPI (backend único)
+│   ├── react/                     React + Vite (frontend principal)
+│   └── widget/                    widget JS puro embebible
+├── evaluacion/
+│   ├── preguntas_eval.json        85 preguntas etiquetadas
+│   ├── evaluacion.py              corre el banco, genera informe
+│   └── pruebas_herramientas.py    valida decisiones técnicas
+├── documentacion/                 guías para leer y defender el sistema
+└── datos/                         (no versionado)
+    ├── docs/                      corpus PDF
+    ├── chroma_db/                 índice vectorial
+    ├── consultas.db               métricas
+    └── usuarios.db                login
 ```
-
-El núcleo no conoce a las interfaces: expone su lógica y cualquier frontend la
-consume por la API. Por eso hay tres interfaces sobre el mismo motor.
-
-> **Nota:** la orquestación es propia, no usa LangChain. Es una decisión
-> deliberada: el flujo (recuperar → filtrar por umbral → construir prompt →
-> generar → verificar) cabe en `rag.py` y mantenerlo explícito es lo que permite
-> intercambiar embeddings, base vectorial o LLM de forma independiente.
-
-## Parámetros del motor
-
-Valores efectivos, para que coincidan con lo documentado en el Cap. 3:
-
-| Parámetro | Valor | Dónde |
-|---|---|---|
-| Fragmentos recuperados (top-k) | 8 | `rag.TOP_K` |
-| Umbral de distancia coseno | 0.65 | `rag.THRESHOLD` |
-| Citas mostradas al usuario | 3 | `rag.MAX_CITAS` |
-| Segmentación | por unidad normativa (artículo/título/párrafo) | `ingest.bloques_semanticos` |
-| Tamaño máximo de fragmento | 500 caracteres | `ingest.CHUNK_SIZE` |
-| Solapamiento (solo al partir un bloque largo) | 80 caracteres | `ingest.OVERLAP` |
-| Temperatura de generación | 0.2 | `llm.TEMPERATURA` |
-| Temperatura de verificación | 0.0 | `llm.TEMPERATURA_JUICIO` |
-| Métrica de similitud | coseno | `vectorstore.get_collection` |
-| Modelo de embeddings | `paraphrase-multilingual-MiniLM-L12-v2` | `embeddings.MODEL_NAME` |
-
-Los valores de top-k y de segmentación salen de barridos medidos; el detalle
-está en `documentacion/ANTIALUCINACION.md`.
-
-## Puesta en marcha
-
-### 1. Backend
-
-```bash
-python -m venv venv
-venv\Scripts\activate              # Linux/Mac: source venv/bin/activate
-pip install -r requirements.txt
-
-copy .streamlit\secrets.toml.example .streamlit\secrets.toml
-#   abre ese archivo y pon tu GROQ_API_KEY (gratis en https://console.groq.com/keys)
-
-python make_demo_pdf.py                # genera el corpus de desarrollo en datos/docs
-python -m nucleo.ingest                # indexa los PDF
-uvicorn interfaces.api:app --reload    # queda en http://localhost:8000
-```
-
-Documentación interactiva de la API: <http://localhost:8000/docs>
-
-### 2. Frontend
-
-```bash
-cd interfaces/react
-npm install
-npm run dev                        # queda en http://localhost:5173
-```
-
-Si la API no corre en el puerto por defecto, copia `interfaces/react/.env.example` como
-`interfaces/react/.env.local` y ajusta `VITE_API_URL`.
-
-## Roles
-
-Se eligen desde el panel lateral. **Todavía sin autenticación** — es lo siguiente
-en la lista, y hasta que exista no debe exponerse fuera de la red local.
-
-- **Estudiante** — chat con citas clicables que abren el PDF en la página exacta.
-- **Docente** — crea cursos y sube documentos que solo afectan al chat de su curso.
-- **Coordinación** — sube reglamentos de la carrera y ve las métricas agregadas.
-
-## Endpoints
-
-| Método | Ruta | Para qué |
-|---|---|---|
-| GET | `/salud` | Estado, proveedor de LLM activo y nº de fragmentos indexados |
-| GET | `/carreras` · `/carreras/{c}/cursos` | Estructura del corpus |
-| POST | `/carreras/{c}/cursos` | Crear curso |
-| POST | `/preguntar` | Consulta → respuesta + citas |
-| GET · POST · DELETE | `/documentos` | Listar, subir e indexar, eliminar |
-| GET | `/documentos/pagina` | PNG de una página (visor de citas) |
-| GET | `/documentos/info` | Nº de páginas de un documento |
-| GET | `/metricas` | Agregado anónimo, filtrable por carrera y curso |
-
-## Cambiar de modelo de lenguaje
-
-Solo se edita `secrets.toml`, no el código:
-
-```toml
-LLM_PROVIDER = "groq"     # por defecto. 14.400 req/día gratis (Llama 3.1 8B)
-# o
-LLM_PROVIDER = "gemini"   # requiere GEMINI_API_KEY real (AIza...)
-```
-
-## Validar las herramientas
-
-```bash
-python evaluacion/pruebas_herramientas.py
-```
-
-Compara embeddings (MiniLM vs e5), lector de PDF (PyMuPDF vs pypdf), tamaño de
-chunk y latencia. Resultados en `documentacion/RESULTADOS_PRUEBAS.md`.
-
-> **Limitación conocida:** ese banco evalúa 6 preguntas sobre un PDF de demostración
-> generado por `make_demo_pdf.py`. Sirve para elegir entre herramientas, **no** es
-> la evaluación del sistema. La evaluación formal con RAGAS y SUS sobre los
-> reglamentos reales está pendiente.
 
 ## Notas
 
-- Sin API key la app sigue recuperando y mostrando los fragmentos oficiales
-  (degrada con elegancia en lugar de romperse).
-- Anti-alucinación por capas: (1) umbral de similitud antes de llamar al LLM,
-  (2) prompt restrictivo, (3) cita literal verificada mecánicamente —la respuesta
-  debe aportar una frase real del contexto, comprobada por comparación de cadenas—
-  y (4) citación obligatoria de la fuente. Qué aporta cada capa, medido:
-  `documentacion/ANTIALUCINACION.md`.
-- Las métricas son anónimas: se guarda el texto de la consulta y la fecha, nunca
-  quién preguntó.
-- `seed_consultas.py` inserta consultas **de demostración**, no de uso real.
-  Cualquier métrica mostrada tras ejecutarlo debe etiquetarse como tal.
-- Es un MVP: prioriza demostrar el flujo completo, no la robustez de producción.
+- **Modo degradado:** si no hay `GROQ_API_KEY`, el sistema sigue
+  recuperando fragmentos y los muestra crudos, en vez de romperse.
+- **Métricas anónimas:** se guarda el texto de la pregunta y la fecha,
+  nunca quién preguntó.
+- **Sistema piloto:** para pasar a producción abierta hace falta HTTPS,
+  backup de las BD, contraseñas rotadas, y CORS restringido a los dominios
+  reales. Ver [ALCANCES.md](documentacion/ALCANCES.md) §3.7.

@@ -1,77 +1,71 @@
 # -*- coding: utf-8 -*-
 """
-ADAPTADOR de base vectorial. Aísla ChromaDB.
-Para cambiar a otra (Qdrant, FAISS, etc.) solo reimplementas este archivo
-manteniendo las mismas funciones (add / query / delete / count / reset).
+ADAPTADOR de base de datos vectorial (ChromaDB).
+
+Guarda cada fragmento junto con:
+  - su vector (embedding)
+  - metadatos: archivo de origen, pagina, ambito (scope)
+  - un id unico
+
+Y sabe buscar por similitud: dada una pregunta, devuelve los k fragmentos
+mas cercanos en significado.
 """
 import os
 import chromadb
 from chromadb.utils import embedding_functions
-from nucleo import embeddings as emb
+from nucleo import embeddings
 
 BASE = os.path.dirname(__file__)
-DB_DIR = os.path.join(os.path.dirname(BASE), "datos", "chroma_db")
-COLLECTION = "practicum"
-_col = None
+CARPETA = os.path.join(os.path.dirname(BASE), "datos", "chroma_db")
+COLECCION = "practicum"
 
 
-def get_collection():
-    global _col
-    if _col is None:
-        ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=emb.MODEL_NAME)
-        client = chromadb.PersistentClient(path=DB_DIR)
-        _col = client.get_or_create_collection(
-            name=COLLECTION, embedding_function=ef, metadata={"hnsw:space": "cosine"})
-    return _col
+def coleccion():
+    """Abre (o crea) la coleccion de ChromaDB."""
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name=embeddings.MODEL_NAME
+    )
+    cliente = chromadb.PersistentClient(path=CARPETA)
+    return cliente.get_or_create_collection(
+        name=COLECCION,
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"},  # metrica de similitud coseno
+    )
 
 
-def add(docs, metas, ids):
-    c = get_collection()
-    for i in range(0, len(docs), 200):
-        c.add(documents=docs[i:i+200], metadatas=metas[i:i+200], ids=ids[i:i+200])
+def agregar(textos, metadatos, ids):
+    """Guarda una lista de fragmentos con sus metadatos y ids."""
+    coleccion().add(documents=textos, metadatas=metadatos, ids=ids)
 
 
-def query(text, k, where=None):
-    """Devuelve lista de (documento, metadata, distancia)."""
-    c = get_collection()
-    if c.count() == 0:
+def buscar(pregunta, k=8, filtro=None):
+    """
+    Devuelve los k fragmentos mas parecidos a la pregunta.
+    filtro: por ejemplo {"scope": {"$in": ["computacion|global"]}}
+    """
+    col = coleccion()
+    if col.count() == 0:
         return []
-    res = c.query(query_texts=[text], n_results=min(k, c.count()), where=where)
-    out = []
-    if res["documents"] and res["documents"][0]:
-        for d, m, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0]):
-            out.append((d, m, dist))
-    return out
+    resultado = col.query(
+        query_texts=[pregunta],
+        n_results=min(k, col.count()),
+        where=filtro,
+    )
+    salida = []
+    for texto, meta, distancia in zip(
+        resultado["documents"][0],
+        resultado["metadatas"][0],
+        resultado["distances"][0],
+    ):
+        salida.append({"texto": texto, "meta": meta, "distancia": distancia})
+    return salida
 
 
-def delete(where):
-    try:
-        get_collection().delete(where=where)
-        return True
-    except Exception:
-        return False
+def borrar(filtro):
+    """Elimina fragmentos que cumplan el filtro (por ejemplo un documento entero)."""
+    coleccion().delete(where=filtro)
 
 
-def count():
-    try:
-        return get_collection().count()
-    except Exception:
-        # la coleccion pudo ser recreada por un reindexado en otro proceso:
-        # se suelta la referencia cacheada y se reintenta una vez
-        global _col
-        _col = None
-        try:
-            return get_collection().count()
-        except Exception:
-            return 0
-
-
-def reset():
-    global _col
-    client = chromadb.PersistentClient(path=DB_DIR)
-    try:
-        client.delete_collection(COLLECTION)
-    except Exception:
-        pass
-    _col = None
-    get_collection()
+def contar():
+    """Cuantos fragmentos hay indexados en total."""
+    return coleccion().count()

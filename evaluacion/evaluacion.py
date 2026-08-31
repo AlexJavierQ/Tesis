@@ -64,11 +64,18 @@ def _acierta(hit, caso):
 
 def evaluar(casos, con_llm=True):
     resultados = []
+    from nucleo import vectorstore
     for caso in casos:
-        scopes = rag.scopes_for(caso.get("carrera", "computacion"), caso.get("curso"))
+        carrera = caso.get("carrera", "computacion")
+        curso = caso.get("curso")
+        scopes = rag.scopes_de(carrera, curso)
 
         t0 = time.perf_counter()
-        hits = rag.retrieve(caso["pregunta"], scopes=scopes)
+        hits_raw = vectorstore.buscar(caso["pregunta"], k=rag.TOP_K,
+                                       filtro={"scope": {"$in": scopes}})
+        # normalizamos al formato que espera _acierta: {texto, fuente, ...}
+        hits = [{"texto": h["texto"], "fuente": h["meta"].get("fuente", "?"),
+                 "distancia": h["distancia"]} for h in hits_raw]
         ms_recuperacion = (time.perf_counter() - t0) * 1000
 
         fuera_de_corpus = caso.get("fuera_de_corpus", False)
@@ -88,8 +95,10 @@ def evaluar(casos, con_llm=True):
         }
 
         if con_llm:
+            carrera = caso.get("carrera", "computacion")
+            curso = caso.get("curso")
             t0 = time.perf_counter()
-            r = rag.answer(caso["pregunta"], scopes=scopes)
+            r = rag.responder(caso["pregunta"], carrera, curso)
             fila["ms_total"] = (time.perf_counter() - t0) * 1000
             fila["con_respaldo"] = r["con_respaldo"]
             fila["respuesta"] = r["respuesta"]
@@ -181,8 +190,9 @@ def informe(resultados, con_llm=True):
                      f"- **{r['pregunta']}** — {motivo}")
 
     L.append("\n---\n")
-    L.append(f"Parámetros: top-k = {rag.TOP_K}, umbral de distancia = {rag.THRESHOLD}, "
-             f"modelo = `{rag.llm.MODEL}` ({rag.llm.PROVIDER}).")
+    from nucleo import llm as _llm
+    L.append(f"Parámetros: top-k = {rag.TOP_K}, umbral de distancia = {rag.UMBRAL}, "
+             f"modelo = `{_llm.MODELO}` (groq).")
     L.append("\nReproducible con `python evaluacion.py`.")
     return "\n".join(L)
 

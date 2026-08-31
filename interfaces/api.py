@@ -1,34 +1,36 @@
 # -*- coding: utf-8 -*-
 """
-API REST del Asistente de Practicum (C3 - backend).
-Es el UNICO backend: el frontend React la consume por HTTP.
+API REST del Asistente de Practicum.
 
-Correr:  uvicorn interfaces.api:app --reload
+Es el UNICO backend. Las tres interfaces (Streamlit, React, widget) la
+consumen por HTTP. Aqui no hay logica del RAG: solo se orquesta la llamada
+a los modulos del nucleo y se serializa la respuesta.
+
+Se corre con:  uvicorn interfaces.api:app --reload
 Docs interactivas:  http://localhost:8000/docs
 """
 import os
-
-# permite ejecutar este archivo directamente: agrega la raiz del proyecto al path
 import sys
+
+# permite ejecutar este archivo: agrega la raiz al path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from nucleo import config                       # carga las keys ANTES de importar el motor  # noqa: F401
+from nucleo import config  # noqa: F401  # carga las keys ANTES que el motor
 
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from nucleo import rag, ingest, llm, metricas, pdfreader
+from nucleo import rag, ingest, vectorstore, pdfreader, metricas, auth
 
-app = FastAPI(title="API Asistente de Practicum", version="2.0")
+app = FastAPI(title="API Asistente de Practicum", version="3.0")
 
-# En desarrollo el front corre en otro puerto (Vite: 5173), por eso hace falta CORS.
-# ORIGENES se puede fijar por entorno al desplegar en vez de dejarlo abierto.
+# CORS: origenes permitidos. En desarrollo el front corre en otro puerto.
 ORIGENES = [o for o in os.environ.get("CORS_ORIGINS", "").split(",") if o] or [
     "http://localhost:5173", "http://127.0.0.1:5173",   # React (Vite)
-    "http://localhost:5500", "http://127.0.0.1:5500",   # demo del widget embebible
+    "http://localhost:5500", "http://127.0.0.1:5500",   # widget demo
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -38,27 +40,41 @@ app.add_middleware(
 )
 
 
-# ---------- rutas seguras ----------
-def _ref(path):
-    """
-    Referencia relativa a docs/ que se expone al cliente.
-    La ingesta ya guarda rutas relativas; se normaliza por si el indice viene
-    de una version anterior que guardaba absolutas.
-    """
-    if not path:
-        return ""
-    if os.path.isabs(path):
-        try:
-            return os.path.relpath(path, rag.DOCS).replace("\\", "/")
-        except ValueError:
-            return ""
-    return path.replace("\\", "/")
+# ---------- MODELOS de peticion/respuesta ----------
+class Credenciales(BaseModel):
+    usuario: str
+    password: str
 
 
-def _resolver(ref):
+class Consulta(BaseModel):
+    pregunta: str
+    carrera: str
+    curso: Optional[str] = None
+
+
+# ---------- utilidades de seguridad ----------
+def _sesion(authorization: str):
+    """Extrae el usuario del header 'Authorization: Bearer <token>'."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    return auth.usuario_de(authorization.split(" ", 1)[1])
+
+
+def _exigir(authorization, *roles):
+    """Devuelve el usuario si su rol esta en `roles`. Si no, 401/403."""
+    usuario = _sesion(authorization)
+    if not usuario:
+        raise HTTPException(401, "Debes iniciar sesion.")
+    if roles and usuario["rol"] not in roles:
+        raise HTTPException(403, "No tienes permisos para esta accion.")
+    return usuario
+
+
+def _resolver_ruta(ref):
     """
-    Referencia del cliente -> ruta absoluta, verificando que caiga DENTRO de docs/.
-    Sin esto, un '../../..' en la referencia serviria cualquier archivo del disco.
+    Convierte una ref relativa (viene del cliente) en una ruta absoluta,
+    verificando que caiga DENTRO de datos/docs/. Sin esto, un '../../..'
+    en la ref serviria cualquier archivo del disco.
     """
     destino = os.path.abspath(os.path.join(rag.DOCS, ref))
     raiz = os.path.abspath(rag.DOCS)
@@ -69,46 +85,17 @@ def _resolver(ref):
     return destino
 
 
-# ---------- modelos ----------
-class Turno(BaseModel):
-    rol: str            # "user" | "bot"
-    texto: str
-
-
-class Consulta(BaseModel):
-    pregunta: str
-    carrera: str
-    curso: Optional[str] = None
-    historial: Optional[List[Turno]] = None   # turnos previos, para seguimientos
-
-
-class Cita(BaseModel):
-    fuente: str
-    pagina: int | str
-    ref: str
-
-
-class Respuesta(BaseModel):
-    respuesta: str
-    fuentes: List[str]
-    citas: List[Cita]
-    con_respaldo: bool
-
-
-# ---------- estado ----------
+# ==================== ENDPOINTS PUBLICOS ====================
 @app.get("/salud")
 def salud():
-    """Estado del servicio y proveedor de LLM realmente activo."""
+    """Estado del servicio."""
     return {
         "ok": True,
-        "proveedor": llm.PROVIDER,
-        "modelo": llm.MODEL,
-        "llm_disponible": config.key_activa() is not None,
-        "fragmentos_indexados": rag.vectorstore.count(),
+        "llm_disponible": config.hay_key(),
+        "fragmentos_indexados": vectorstore.contar(),
     }
 
 
-# ---------- estructura ----------
 @app.get("/carreras")
 def get_carreras():
     return rag.carreras()
@@ -119,48 +106,64 @@ def get_cursos(carrera: str):
     return rag.cursos(carrera)
 
 
-@app.post("/carreras/{carrera}/cursos")
-def crear_curso(carrera: str, nombre: str = Form(...)):
-    nombre = nombre.strip()
-    if not nombre or "/" in nombre or "\\" in nombre or nombre.startswith("."):
-        raise HTTPException(400, "Nombre de curso no valido.")
-    os.makedirs(rag.folder_curso(carrera, nombre), exist_ok=True)
-    return {"ok": True, "curso": nombre}
+# ==================== AUTENTICACION ====================
+@app.post("/login")
+def api_login(cred: Credenciales):
+    """Devuelve un token si las credenciales son correctas."""
+    token = auth.login(cred.usuario, cred.password)
+    if not token:
+        raise HTTPException(401, "Usuario o contrasena incorrectos.")
+    usuario = auth.usuario_de(token)
+    return {"token": token, "usuario": usuario}
 
 
-# ---------- consultar ----------
-@app.post("/preguntar", response_model=Respuesta)
+@app.get("/me")
+def api_me(authorization: str = Header(None)):
+    """Devuelve el usuario actual segun el token."""
+    return _exigir(authorization)
+
+
+@app.post("/logout")
+def api_logout(authorization: str = Header(None)):
+    """Cierra la sesion."""
+    if authorization and authorization.lower().startswith("bearer "):
+        auth.logout(authorization.split(" ", 1)[1])
+    return {"ok": True}
+
+
+# ==================== CONSULTA (publica: para el widget del portal) ====================
+@app.post("/preguntar")
 def preguntar(c: Consulta):
-    """Pregunta al asistente de una carrera (y opcionalmente un curso)."""
+    """Pregunta al asistente. Publica: el widget del portal puede llamar sin login."""
     if not c.pregunta.strip():
         raise HTTPException(400, "La pregunta esta vacia.")
-    scopes = rag.scopes_for(c.carrera, c.curso)
-    historial = [t.model_dump() for t in c.historial] if c.historial else None
-    r = rag.answer(c.pregunta, scopes=scopes, historial=historial)
-    # los mensajes sociales (saludo, gracias) no se registran como consultas
-    if not r.get("social"):
-        metricas.registrar(c.pregunta, r["con_respaldo"], r["fuentes"], scopes[-1])
+    r = rag.responder(c.pregunta, c.carrera, c.curso)
+    scope_registro = f"{c.carrera}|curso:{c.curso}" if c.curso else f"{c.carrera}|global"
+    metricas.registrar(c.pregunta, r["con_respaldo"], scope_registro)
+    # convertimos las citas a un formato con `ref` (ruta relativa lista para el visor)
     return {
         "respuesta": r["respuesta"],
-        "fuentes": r["fuentes"],
-        "citas": [{"fuente": x["fuente"], "pagina": x["pagina"], "ref": _ref(x["path"])}
-                  for x in r["citas"]],
         "con_respaldo": r["con_respaldo"],
+        "citas": [{"fuente": ci["fuente"], "pagina": ci["pagina"], "ref": ci["path"]}
+                  for ci in r["citas"]],
     }
 
 
-# ---------- documentos ----------
+# ==================== DOCUMENTOS ====================
 @app.get("/documentos")
-def listar_documentos(carrera: str, curso: Optional[str] = None):
-    scope = rag.scope_curso(carrera, curso) if curso else rag.scope_global(carrera)
-    folder = rag.folder_de(scope)
-    if not os.path.isdir(folder):
+def listar_documentos(carrera: str, curso: Optional[str] = None,
+                      authorization: str = Header(None)):
+    """Lista los PDF de un ambito. Requiere sesion."""
+    _exigir(authorization)
+    carpeta = rag.carpeta_curso(carrera, curso) if curso else rag.carpeta_global(carrera)
+    if not os.path.isdir(carpeta):
         return []
     salida = []
-    for nombre in sorted(os.listdir(folder)):
+    for nombre in sorted(os.listdir(carpeta)):
         if nombre.lower().endswith(".pdf"):
-            p = os.path.join(folder, nombre)
-            salida.append({"nombre": nombre, "ref": _ref(p),
+            p = os.path.join(carpeta, nombre)
+            rel = os.path.relpath(p, rag.DOCS).replace("\\", "/")
+            salida.append({"nombre": nombre, "ref": rel,
                            "paginas": pdfreader.num_paginas(p)})
     return salida
 
@@ -168,39 +171,46 @@ def listar_documentos(carrera: str, curso: Optional[str] = None):
 @app.post("/documentos")
 def subir_documento(carrera: str = Form(...),
                     archivo: UploadFile = File(...),
-                    curso: Optional[str] = Form(None)):
-    """Sube un PDF como global (coordinacion) o de un curso (docente) e indexa al instante."""
+                    curso: Optional[str] = Form(None),
+                    authorization: str = Header(None)):
+    """Sube un PDF y lo indexa. Solo docente/coordinacion."""
+    _exigir(authorization, "docente", "coordinacion")
     if not archivo.filename.lower().endswith(".pdf"):
-        raise HTTPException(400, "Solo se aceptan archivos PDF.")
-    nombre = os.path.basename(archivo.filename)       # evita rutas en el nombre
+        raise HTTPException(400, "Solo se aceptan PDF.")
+    nombre = os.path.basename(archivo.filename)
     if curso:
-        folder, scope = rag.folder_curso(carrera, curso), rag.scope_curso(carrera, curso)
+        carpeta, scope = rag.carpeta_curso(carrera, curso), f"{carrera}|curso:{curso}"
     else:
-        folder, scope = rag.folder_global(carrera), rag.scope_global(carrera)
-    os.makedirs(folder, exist_ok=True)
-    destino = os.path.join(folder, nombre)
+        carpeta, scope = rag.carpeta_global(carrera), f"{carrera}|global"
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, nombre)
     with open(destino, "wb") as f:
         f.write(archivo.file.read())
-    n = ingest.add_pdf(destino, scope)
-    return {"ok": True, "archivo": nombre, "scope": scope, "fragmentos": n}
+    n = ingest.indexar_pdf(destino, scope)
+    return {"ok": True, "archivo": nombre, "fragmentos": n}
 
 
 @app.delete("/documentos")
-def borrar_documento(carrera: str, nombre: str, curso: Optional[str] = None):
-    scope = rag.scope_curso(carrera, curso) if curso else rag.scope_global(carrera)
-    nombre = os.path.basename(nombre)
-    destino = os.path.join(rag.folder_de(scope), nombre)
+def borrar_documento(carrera: str, nombre: str, curso: Optional[str] = None,
+                     authorization: str = Header(None)):
+    """Elimina un PDF. Solo docente/coordinacion."""
+    _exigir(authorization, "docente", "coordinacion")
+    scope = f"{carrera}|curso:{curso}" if curso else f"{carrera}|global"
+    carpeta = rag.carpeta_curso(carrera, curso) if curso else rag.carpeta_global(carrera)
+    destino = os.path.join(carpeta, os.path.basename(nombre))
     if not os.path.exists(destino):
         raise HTTPException(404, "Documento no encontrado.")
-    ingest.remove_doc(nombre, scope)
+    ingest.borrar_documento(os.path.basename(nombre), scope)
     os.remove(destino)
     return {"ok": True}
 
 
 @app.get("/documentos/pagina")
-def pagina_documento(ref: str = Query(...), pagina: int = 1):
-    """PNG de una pagina, para el visor que abre la cita en el punto exacto."""
-    destino = _resolver(ref)
+def pagina_documento(ref: str = Query(...), pagina: int = 1,
+                     authorization: str = Header(None)):
+    """PNG de una pagina del PDF (para el visor). Requiere sesion."""
+    _exigir(authorization)
+    destino = _resolver_ruta(ref)
     total = pdfreader.num_paginas(destino)
     pagina = max(1, min(pagina, total))
     png = pdfreader.render_png(destino, pagina)
@@ -210,22 +220,35 @@ def pagina_documento(ref: str = Query(...), pagina: int = 1):
 
 
 @app.get("/documentos/info")
-def info_documento(ref: str = Query(...)):
-    destino = _resolver(ref)
+def info_documento(ref: str = Query(...), authorization: str = Header(None)):
+    """Info del PDF (numero de paginas)."""
+    _exigir(authorization)
+    destino = _resolver_ruta(ref)
     return {"nombre": os.path.basename(destino), "paginas": pdfreader.num_paginas(destino)}
 
 
-# ---------- metricas ----------
+# ==================== METRICAS ====================
 @app.get("/metricas")
-def get_metricas(carrera: Optional[str] = None, curso: Optional[str] = None):
+def get_metricas(carrera: Optional[str] = None,
+                 curso: Optional[str] = None,
+                 authorization: str = Header(None)):
     """
-    Agregado y anonimo: texto de la consulta y fecha, nunca quien pregunto.
-    Sin parametros devuelve el global; con carrera+curso, el de ese aula.
+    Agregados anonimos.
+      - Coordinacion: puede ver todo (sin filtro), o su carrera, o un curso.
+      - Docente: solo puede ver metricas de un curso concreto (el suyo).
+      - Estudiante: no.
     """
-    if carrera and curso:
-        filas = metricas.listar(exact=rag.scope_curso(carrera, curso))
+    usuario = _exigir(authorization, "docente", "coordinacion")
+    if usuario["rol"] == "docente" and not curso:
+        raise HTTPException(400, "El docente debe indicar un curso.")
+    # el docente solo consulta cursos de su propia carrera
+    if usuario["rol"] == "docente":
+        carrera = usuario["carrera"]
+
+    if curso and carrera:
+        filas = metricas.listar(prefijo=f"{carrera}|curso:{curso}")
     elif carrera:
-        filas = metricas.listar(prefix=carrera + "|")
+        filas = metricas.listar(prefijo=carrera + "|")
     else:
         filas = metricas.listar()
     return metricas.resumen(filas)

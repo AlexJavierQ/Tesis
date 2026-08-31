@@ -1,82 +1,69 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, getToken, clearToken } from "./api";
+import Login from "./componentes/Login";
 import Chat from "./componentes/Chat";
-import PanelAdmin from "./componentes/PanelAdmin";
-import VisorPdf from "./componentes/VisorPdf";
-import Icono from "./componentes/Icono";
+import Admin from "./componentes/Admin";
 import "./estilos.css";
 
 /**
- * La app tiene dos caras:
- *  - el CHAT del estudiante, que es lo primero y ocupa todo (uso principal);
- *  - un PANEL para docente/coordinacion, escondido detras de un acceso discreto.
+ * Componente raiz.
+ * Dos estados posibles: sin sesion -> Login. Con sesion -> app segun rol.
  *
- * El estudiante nunca elige "rol" ni "scope": entra y pregunta. Esa es la
- * diferencia con la version anterior, que exponia la maquinaria del sistema.
+ * El estudiante ve solo el Chat. El docente y coordinacion ven un tab
+ * mas para gestion (Admin: documentos + metricas).
  */
 export default function App() {
+  const [usuario, setUsuario] = useState(null);
+  const [cargando, setCargando] = useState(true);
   const [vista, setVista] = useState("chat"); // "chat" | "admin"
-  const [carrera, setCarrera] = useState("");
-  const [salud, setSalud] = useState(null);
-  const [docAbierto, setDocAbierto] = useState(null);
-  const [fallo, setFallo] = useState(null);
 
+  // al cargar, si hay token guardado, preguntamos "quien soy"
   useEffect(() => {
-    api.salud().then(setSalud).catch(() => setSalud(null));
-    api
-      .carreras()
-      .then((cs) => {
-        setCarrera(cs[0] || "computacion");
-        setFallo(null);
-      })
-      .catch((e) => setFallo(e.message));
+    if (!getToken()) { setCargando(false); return; }
+    api.me()
+      .then(setUsuario)
+      .catch(() => clearToken())
+      .finally(() => setCargando(false));
   }, []);
 
-  if (fallo) {
-    return (
-      <div className="pantalla-error">
-        <div className="error-icono"><Icono name="sin-conexion" size={44} /></div>
-        <h1>No encuentro el servicio</h1>
-        <p>Parece que el asistente no está encendido en este momento.</p>
-        <p className="sub">
-          Si eres quien lo administra: levanta la API con{" "}
-          <code>uvicorn api:app --reload</code> y recarga la página.
-        </p>
-      </div>
-    );
+  function cerrarSesion() {
+    api.logout().catch(() => {});
+    clearToken();
+    setUsuario(null);
   }
+
+  if (cargando) return <div className="pantalla">Cargando...</div>;
+  if (!usuario) return <Login onOk={setUsuario} />;
+
+  const puedeAdmin = usuario.rol === "docente" || usuario.rol === "coordinacion";
 
   return (
     <div className="app">
       <header className="barra">
-        <div className="marca" onClick={() => setVista("chat")} role="button" tabIndex={0}>
-          <span className="marca-icono" aria-hidden><Icono name="chispa" size={21} /></span>
-          <span className="marca-txt">
-            Asistente de Prácticum
-            <small>UTPL · Computación</small>
-          </span>
+        <div className="marca">Asistente de Practicum · UTPL</div>
+        <div className="tabs">
+          <button
+            className={vista === "chat" ? "activo" : ""}
+            onClick={() => setVista("chat")}
+          >Chat</button>
+          {puedeAdmin && (
+            <button
+              className={vista === "admin" ? "activo" : ""}
+              onClick={() => setVista("admin")}
+            >Gestion</button>
+          )}
         </div>
-
-        {vista === "chat" ? (
-          <button className="acceso" onClick={() => setVista("admin")}>
-            Soy docente o coordinación
-          </button>
-        ) : (
-          <button className="acceso" onClick={() => setVista("chat")}>
-            ← Volver al chat
-          </button>
-        )}
+        <div className="sesion">
+          <span>{usuario.usuario} · {usuario.rol}</span>
+          <button onClick={cerrarSesion}>Salir</button>
+        </div>
       </header>
 
       <main className="lienzo">
-        {vista === "chat" ? (
-          <Chat carrera={carrera} alVerCita={setDocAbierto} salud={salud} />
-        ) : (
-          <PanelAdmin carrera={carrera} alVerDoc={setDocAbierto} />
-        )}
+        {vista === "chat"
+          ? <Chat carrera={usuario.carrera} />
+          : <Admin usuario={usuario} />}
       </main>
-
-      {docAbierto && <VisorPdf doc={docAbierto} alCerrar={() => setDocAbierto(null)} />}
     </div>
   );
 }
