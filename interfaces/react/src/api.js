@@ -53,6 +53,15 @@ export const api = {
   carreras: () => pedir("/carreras"),
   cursos: (carrera) => pedir(`/carreras/${encodeURIComponent(carrera)}/cursos`),
 
+  crearCurso: (carrera, nombre) => {
+    const fd = new FormData();
+    fd.append("nombre", nombre);
+    return pedir(`/carreras/${encodeURIComponent(carrera)}/cursos`, {
+      method: "POST",
+      body: fd,
+    });
+  },
+
   // consulta
   preguntar: (pregunta, carrera, curso) =>
     pedir("/preguntar", {

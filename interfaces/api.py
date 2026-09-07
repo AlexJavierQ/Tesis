@@ -106,6 +106,21 @@ def get_cursos(carrera: str):
     return rag.cursos(carrera)
 
 
+@app.post("/carreras/{carrera}/cursos")
+def crear_curso(carrera: str, nombre: str = Form(...),
+                authorization: str = Header(None)):
+    """Crea la carpeta de un curso nuevo. Solo docente o coordinacion."""
+    _exigir(authorization, "docente", "coordinacion")
+    nombre = nombre.strip()
+    if not nombre or "/" in nombre or "\\" in nombre or nombre.startswith("."):
+        raise HTTPException(400, "Nombre de curso no valido.")
+    carpeta = rag.carpeta_curso(carrera, nombre)
+    if os.path.isdir(carpeta):
+        raise HTTPException(409, "Ese curso ya existe.")
+    os.makedirs(carpeta, exist_ok=True)
+    return {"ok": True, "curso": nombre}
+
+
 # ==================== AUTENTICACION ====================
 @app.post("/login")
 def api_login(cred: Credenciales):

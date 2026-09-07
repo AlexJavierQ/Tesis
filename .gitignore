@@ -3,6 +3,7 @@
 
 # datos generados localmente (se crean al correr)
 datos/consultas.db
+datos/usuarios.db
 datos/chroma_db/
 datos/docs/
 
