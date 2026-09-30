@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 /**
- * Panel de gestion para docente y coordinacion, con 3 pestanas:
- *   - Documentos: subir / borrar / listar PDFs
- *   - Cursos: crear cursos nuevos (docente y coord)
- *   - Metricas: ver estadisticas
+ * Panel de gestion para docente y coordinacion.
+ * Docente: pestanas Documentos, Cursos y Metricas.
+ * Coordinacion: ademas la pestana Usuarios (CRUD de usuarios).
  */
 export default function Admin({ usuario }) {
   const esCoord = usuario.rol === "coordinacion";
@@ -20,8 +19,17 @@ export default function Admin({ usuario }) {
   const [error, setError] = useState(null);
   const [nuevoCurso, setNuevoCurso] = useState("");
 
+  // gestion de usuarios (solo coord)
+  const [usuarios, setUsuarios] = useState([]);
+  const [nuevoUsr, setNuevoUsr] = useState({
+    usuario: "", password: "", rol: "estudiante", carrera: carrera,
+  });
+
   useEffect(() => { recargarCursos(); }, [carrera]);
   useEffect(() => { recargarDocs(); }, [curso, pestana]);
+  useEffect(() => {
+    if (pestana === "usuarios" && esCoord) cargarUsuarios();
+  }, [pestana]);
 
   async function recargarCursos() {
     try {
@@ -73,6 +81,62 @@ export default function Admin({ usuario }) {
     } catch (e) { setError(e.message); }
   }
 
+  // ---------- Gestion de usuarios (solo coord) ----------
+  async function cargarUsuarios() {
+    setError(null);
+    try { setUsuarios(await api.usuarios.listar()); }
+    catch (e) { setError(e.message); }
+  }
+
+  async function crearNuevoUsuario() {
+    if (!nuevoUsr.usuario.trim() || !nuevoUsr.password.trim()) {
+      setError("Usuario y contrasena obligatorios.");
+      return;
+    }
+    setAviso(null); setError(null);
+    try {
+      await api.usuarios.crear(nuevoUsr);
+      setAviso(`Usuario "${nuevoUsr.usuario}" creado.`);
+      setNuevoUsr({ usuario: "", password: "", rol: "estudiante", carrera });
+      cargarUsuarios();
+    } catch (e) { setError(e.message); }
+  }
+
+  async function cambiarRolUsr(u, nuevoRol) {
+    if (u.rol === nuevoRol) return;
+    if (!confirm(`Cambiar rol de "${u.usuario}" a "${nuevoRol}"?`)) return;
+    setAviso(null); setError(null);
+    try {
+      await api.usuarios.actualizar(u.usuario, { rol: nuevoRol });
+      setAviso(`Rol de "${u.usuario}" actualizado a "${nuevoRol}".`);
+      cargarUsuarios();
+    } catch (e) { setError(e.message); }
+  }
+
+  async function resetearPasswordUsr(u) {
+    const p = prompt(`Nueva contrasena para "${u.usuario}":`);
+    if (!p || !p.trim()) return;
+    setAviso(null); setError(null);
+    try {
+      await api.usuarios.actualizar(u.usuario, { nuevo_password: p });
+      setAviso(`Contrasena de "${u.usuario}" reseteada. Sus sesiones activas fueron cerradas.`);
+    } catch (e) { setError(e.message); }
+  }
+
+  async function borrarUsr(u) {
+    if (u.usuario === usuario.usuario) {
+      setError("No puedes borrarte a ti mismo.");
+      return;
+    }
+    if (!confirm(`Borrar al usuario "${u.usuario}"? Esta accion es irreversible.`)) return;
+    setAviso(null); setError(null);
+    try {
+      await api.usuarios.borrar(u.usuario);
+      setAviso(`Usuario "${u.usuario}" borrado.`);
+      cargarUsuarios();
+    } catch (e) { setError(e.message); }
+  }
+
   async function verMetricas() {
     setError(null);
     try {
@@ -96,6 +160,12 @@ export default function Admin({ usuario }) {
           className={pestana === "metricas" ? "activo" : ""}
           onClick={() => setPestana("metricas")}
         >📊 Métricas</button>
+        {esCoord && (
+          <button
+            className={pestana === "usuarios" ? "activo" : ""}
+            onClick={() => setPestana("usuarios")}
+          >👥 Usuarios</button>
+        )}
       </nav>
 
       {aviso && <div className="aviso-ok">{aviso}</div>}
@@ -234,6 +304,101 @@ export default function Admin({ usuario }) {
                   </ul>}
             </div>
           )}
+        </section>
+      )}
+
+      {pestana === "usuarios" && esCoord && (
+        <section className="admin-seccion">
+          <h3>Usuarios del sistema</h3>
+          <p className="admin-nota">
+            Solo la coordinación puede crear, modificar y eliminar usuarios.
+            Cambiar la contraseña cierra todas las sesiones activas del usuario.
+          </p>
+
+          <h4>Crear nuevo usuario</h4>
+          <div className="fila">
+            <label>Usuario:
+              <input
+                value={nuevoUsr.usuario}
+                onChange={(e) => setNuevoUsr({ ...nuevoUsr, usuario: e.target.value })}
+                placeholder="ej: jperez"
+              />
+            </label>
+            <label>Contraseña:
+              <input
+                type="password"
+                value={nuevoUsr.password}
+                onChange={(e) => setNuevoUsr({ ...nuevoUsr, password: e.target.value })}
+              />
+            </label>
+            <label>Rol:
+              <select
+                value={nuevoUsr.rol}
+                onChange={(e) => setNuevoUsr({ ...nuevoUsr, rol: e.target.value })}
+              >
+                <option value="estudiante">Estudiante</option>
+                <option value="docente">Docente</option>
+                <option value="coordinacion">Coordinación</option>
+              </select>
+            </label>
+            <label>Carrera:
+              <input
+                value={nuevoUsr.carrera}
+                onChange={(e) => setNuevoUsr({ ...nuevoUsr, carrera: e.target.value })}
+              />
+            </label>
+            <button
+              onClick={crearNuevoUsuario}
+              disabled={!nuevoUsr.usuario.trim() || !nuevoUsr.password.trim()}
+            >Crear usuario</button>
+          </div>
+
+          <h4>Usuarios existentes ({usuarios.length})</h4>
+          {usuarios.length === 0
+            ? <p className="vacio">Cargando o sin usuarios.</p>
+            : <table className="tabla-usuarios">
+                <thead>
+                  <tr>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Carrera</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usuarios.map(u => (
+                    <tr key={u.usuario}>
+                      <td>
+                        {u.usuario}
+                        {u.usuario === usuario.usuario && <span className="chip-yo"> (tú)</span>}
+                      </td>
+                      <td>
+                        <select
+                          value={u.rol}
+                          onChange={(e) => cambiarRolUsr(u, e.target.value)}
+                          disabled={u.usuario === usuario.usuario}
+                        >
+                          <option value="estudiante">Estudiante</option>
+                          <option value="docente">Docente</option>
+                          <option value="coordinacion">Coordinación</option>
+                        </select>
+                      </td>
+                      <td>{u.carrera}</td>
+                      <td>
+                        <button
+                          className="btn-secundario"
+                          onClick={() => resetearPasswordUsr(u)}
+                        >Resetear contraseña</button>
+                        <button
+                          className="btn-peligro"
+                          onClick={() => borrarUsr(u)}
+                          disabled={u.usuario === usuario.usuario}
+                        >Borrar</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>}
         </section>
       )}
     </div>

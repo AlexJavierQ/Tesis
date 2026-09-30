@@ -149,6 +149,19 @@ input, select { width: 100%; }
 }
 .doc-lista button { background: rgba(240, 119, 107, .12); color: var(--rojo); border-color: transparent; padding: 5px 10px; font-size: 12px; }
 
+/* ---------- tabla de usuarios (pestaña Usuarios del panel Admin) ---------- */
+.tabla-usuarios { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.tabla-usuarios th, .tabla-usuarios td {
+  padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line);
+}
+.tabla-usuarios th { color: var(--gris); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+.tabla-usuarios tbody tr:hover { background: var(--surface); }
+.tabla-usuarios td select { max-width: 160px; padding: 5px 8px; font-size: 12px; }
+.tabla-usuarios td button { margin-right: 6px; padding: 5px 10px; font-size: 12px; }
+.btn-secundario { background: var(--azul-suave); color: var(--azul); border-color: transparent; }
+.btn-peligro { background: rgba(240, 119, 107, .12); color: var(--rojo); border-color: transparent; }
+.chip-yo { color: var(--azul); font-size: 11px; margin-left: 4px; }
+
 .aviso-ok { padding: 10px; background: rgba(85, 201, 140, .12); color: #86dbac; border-radius: 8px; margin: 10px 0; }
 .aviso-error { padding: 10px; background: rgba(240, 119, 107, .12); color: #f3a79d; border-radius: 8px; margin: 10px 0; }
 

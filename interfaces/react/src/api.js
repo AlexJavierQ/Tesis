@@ -104,4 +104,23 @@ export const api = {
       + (t ? "&_t=" + encodeURIComponent(t) : "");
   },
   infoDoc: (ref) => pedir("/documentos/info?" + new URLSearchParams({ ref })),
+
+  // ---------- gestion de usuarios (solo coord) ----------
+  usuarios: {
+    listar: () => pedir("/usuarios"),
+    crear: (u) =>
+      pedir("/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(u),
+      }),
+    actualizar: (usuario, cambios) =>
+      pedir(`/usuarios/${encodeURIComponent(usuario)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cambios),
+      }),
+    borrar: (usuario) =>
+      pedir(`/usuarios/${encodeURIComponent(usuario)}`, { method: "DELETE" }),
+  },
 };

@@ -96,6 +96,53 @@ def crear_usuario(usuario, password, rol, carrera):
         c.close()
 
 
+def listar_usuarios():
+    """Devuelve la lista de todos los usuarios (sin contrasenas)."""
+    c = _conexion()
+    filas = c.execute(
+        "SELECT usuario, rol, carrera FROM usuarios ORDER BY usuario"
+    ).fetchall()
+    c.close()
+    return [{"usuario": f[0], "rol": f[1], "carrera": f[2]} for f in filas]
+
+
+def actualizar_usuario(usuario, rol=None, carrera=None, nuevo_password=None):
+    """
+    Actualiza rol, carrera y/o contrasena de un usuario existente.
+    Si se cambia la contrasena, se cierran todas sus sesiones activas.
+    """
+    if rol is not None and rol not in ("estudiante", "docente", "coordinacion"):
+        raise ValueError("Rol no valido.")
+    c = _conexion()
+    existe = c.execute(
+        "SELECT usuario FROM usuarios WHERE usuario=?", (usuario,)
+    ).fetchone()
+    if not existe:
+        c.close()
+        raise ValueError("Usuario no encontrado.")
+    if rol:
+        c.execute("UPDATE usuarios SET rol=? WHERE usuario=?", (rol, usuario))
+    if carrera:
+        c.execute("UPDATE usuarios SET carrera=? WHERE usuario=?", (carrera, usuario))
+    if nuevo_password:
+        c.execute(
+            "UPDATE usuarios SET password=? WHERE usuario=?",
+            (_hashear(nuevo_password), usuario),
+        )
+        c.execute("DELETE FROM sesiones WHERE usuario=?", (usuario,))
+    c.commit()
+    c.close()
+
+
+def borrar_usuario(usuario):
+    """Elimina un usuario y todas sus sesiones activas."""
+    c = _conexion()
+    c.execute("DELETE FROM sesiones WHERE usuario=?", (usuario,))
+    c.execute("DELETE FROM usuarios WHERE usuario=?", (usuario,))
+    c.commit()
+    c.close()
+
+
 def login(usuario, password):
     """
     Si las credenciales son correctas, crea una sesion y devuelve el token.

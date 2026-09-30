@@ -52,6 +52,19 @@ class Consulta(BaseModel):
     curso: Optional[str] = None
 
 
+class UsuarioNuevo(BaseModel):
+    usuario: str
+    password: str
+    rol: str
+    carrera: str
+
+
+class UsuarioCambio(BaseModel):
+    rol: Optional[str] = None
+    carrera: Optional[str] = None
+    nuevo_password: Optional[str] = None
+
+
 # ---------- utilidades de seguridad ----------
 def _sesion(authorization: str):
     """Extrae el usuario del header 'Authorization: Bearer <token>'."""
@@ -143,6 +156,54 @@ def api_logout(authorization: str = Header(None)):
     """Cierra la sesion."""
     if authorization and authorization.lower().startswith("bearer "):
         auth.logout(authorization.split(" ", 1)[1])
+    return {"ok": True}
+
+
+# ==================== GESTION DE USUARIOS (solo coordinacion) ====================
+@app.get("/usuarios")
+def get_usuarios(authorization: str = Header(None)):
+    """Lista todos los usuarios (sin passwords). Solo coordinacion."""
+    _exigir(authorization, "coordinacion")
+    return auth.listar_usuarios()
+
+
+@app.post("/usuarios")
+def crear_usuario_api(u: UsuarioNuevo, authorization: str = Header(None)):
+    """Crea un usuario nuevo. Solo coordinacion."""
+    _exigir(authorization, "coordinacion")
+    if not u.usuario.strip() or not u.password.strip():
+        raise HTTPException(400, "Usuario y contrasena obligatorios.")
+    try:
+        auth.crear_usuario(u.usuario.strip(), u.password, u.rol, u.carrera.strip())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "usuario": u.usuario.strip()}
+
+
+@app.put("/usuarios/{usuario}")
+def actualizar_usuario_api(usuario: str, cambio: UsuarioCambio,
+                           authorization: str = Header(None)):
+    """
+    Actualiza rol, carrera y/o password de un usuario. Solo coordinacion.
+    Protecciones: coord no puede cambiar su propio rol (evita quedarse sin coord).
+    """
+    actor = _exigir(authorization, "coordinacion")
+    if actor["usuario"] == usuario and cambio.rol and cambio.rol != "coordinacion":
+        raise HTTPException(400, "No puedes cambiar tu propio rol.")
+    try:
+        auth.actualizar_usuario(usuario, cambio.rol, cambio.carrera, cambio.nuevo_password)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@app.delete("/usuarios/{usuario}")
+def borrar_usuario_api(usuario: str, authorization: str = Header(None)):
+    """Elimina un usuario. Solo coordinacion. No puede borrarse a si mismo."""
+    actor = _exigir(authorization, "coordinacion")
+    if actor["usuario"] == usuario:
+        raise HTTPException(400, "No puedes borrarte a ti mismo.")
+    auth.borrar_usuario(usuario)
     return {"ok": True}
 
 
