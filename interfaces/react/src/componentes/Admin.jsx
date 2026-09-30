@@ -287,12 +287,24 @@ export default function Admin({ usuario }) {
                 </div>
               </div>
 
-              <h4>Preguntas más frecuentes</h4>
+              <h4>Temas más consultados</h4>
+              <p className="admin-nota">
+                Agrupados por significado: preguntas escritas distinto pero que
+                significan lo mismo cuentan como un solo tema.
+              </p>
               {metricas.top.length === 0
                 ? <p className="vacio">—</p>
                 : <ul className="met-lista">
-                    {metricas.top.map((t, i) =>
-                      <li key={i}><span>{t.pregunta}</span><em>{t.n}</em></li>)}
+                    {metricas.top.map((t, i) => (
+                      <li key={i}>
+                        <span>
+                          {t.pregunta}
+                          {t.variantes > 1 &&
+                            <em className="met-variantes"> · {t.variantes} formas distintas</em>}
+                        </span>
+                        <em>{t.n}</em>
+                      </li>
+                    ))}
                   </ul>}
 
               <h4>Preguntas sin respaldo (vacíos a cubrir)</h4>
