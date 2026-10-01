@@ -2,10 +2,11 @@
 .streamlit/secrets.toml
 
 # datos generados localmente (se crean al correr)
+# Nota: datos/docs/ (el corpus PDF) SI se versiona para que viaje con el repo.
+# El indice (chroma_db) se regenera con `python -m nucleo.ingest`.
 datos/consultas.db
 datos/usuarios.db
 datos/chroma_db/
-datos/docs/
 
 # python
 __pycache__/
