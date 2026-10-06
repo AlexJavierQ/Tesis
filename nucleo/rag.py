@@ -12,7 +12,7 @@ Ambitos (scope): etiqueta que distingue de que documentos se puede leer.
   "<carrera>|curso:<curso>"   -> documentos de un curso especifico
 """
 import os
-from nucleo import vectorstore, llm
+from nucleo import vectorstore, llm, bd
 
 BASE = os.path.dirname(__file__)
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
@@ -50,22 +50,15 @@ def _mensaje_social(pregunta):
     return None
 
 
-# ---------- estructura de carpetas ----------
+# ---------- estructura (la define la BD, no las carpetas) ----------
 def carreras():
-    """Lista las carreras que tienen documentos (subcarpetas de datos/docs/)."""
-    if not os.path.isdir(DOCS):
-        return []
-    return sorted(d for d in os.listdir(DOCS)
-                  if os.path.isdir(os.path.join(DOCS, d)))
+    """Lista las carreras registradas en la BD."""
+    return bd.carreras()
 
 
 def cursos(carrera):
-    """Lista los cursos de una carrera (subcarpetas de cursos/)."""
-    cdir = os.path.join(DOCS, carrera, "cursos")
-    if not os.path.isdir(cdir):
-        return []
-    return sorted(d for d in os.listdir(cdir)
-                  if os.path.isdir(os.path.join(cdir, d)))
+    """Lista los cursos de una carrera registrados en la BD."""
+    return bd.cursos(carrera)
 
 
 def carpeta_global(carrera):

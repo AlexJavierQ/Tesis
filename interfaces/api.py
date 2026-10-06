@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from nucleo import rag, ingest, vectorstore, pdfreader, metricas, auth
+from nucleo import rag, ingest, vectorstore, pdfreader, metricas, auth, bd
 
 app = FastAPI(title="API Asistente de Practicum", version="3.0")
 
@@ -119,18 +119,34 @@ def get_cursos(carrera: str):
     return rag.cursos(carrera)
 
 
+@app.post("/carreras")
+def crear_carrera(nombre: str = Form(...), authorization: str = Header(None)):
+    """Crea una carrera nueva (en la BD) y su carpeta. Solo coordinacion."""
+    _exigir(authorization, "coordinacion")
+    nombre = nombre.strip()
+    if not nombre or "/" in nombre or "\\" in nombre or nombre.startswith("."):
+        raise HTTPException(400, "Nombre de carrera no valido.")
+    try:
+        bd.crear_carrera(nombre)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    os.makedirs(rag.carpeta_global(nombre), exist_ok=True)
+    return {"ok": True, "carrera": nombre}
+
+
 @app.post("/carreras/{carrera}/cursos")
 def crear_curso(carrera: str, nombre: str = Form(...),
                 authorization: str = Header(None)):
-    """Crea la carpeta de un curso nuevo. Solo docente o coordinacion."""
+    """Crea un curso (en la BD, fuente de verdad) y su carpeta. Solo docente/coord."""
     _exigir(authorization, "docente", "coordinacion")
     nombre = nombre.strip()
     if not nombre or "/" in nombre or "\\" in nombre or nombre.startswith("."):
         raise HTTPException(400, "Nombre de curso no valido.")
-    carpeta = rag.carpeta_curso(carrera, nombre)
-    if os.path.isdir(carpeta):
-        raise HTTPException(409, "Ese curso ya existe.")
-    os.makedirs(carpeta, exist_ok=True)
+    try:
+        bd.crear_curso(carrera, nombre)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    os.makedirs(rag.carpeta_curso(carrera, nombre), exist_ok=True)
     return {"ok": True, "curso": nombre}
 
 

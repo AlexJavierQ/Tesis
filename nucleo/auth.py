@@ -1,27 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-AUTENTICACION (login).
+AUTENTICACION (login, sesiones y CRUD de usuarios).
 
-Tres roles:
-  estudiante     -> puede preguntar en el chat
-  docente        -> ademas puede subir documentos de sus cursos
-  coordinacion   -> ademas puede subir reglamentos generales y ver metricas
+Usa el modelo relacional normalizado de nucleo/bd.py:
+  usuarios(id, usuario, password, rol_id -> roles, carrera_id -> carreras)
+  sesiones(token, usuario_id -> usuarios, creado_en)
 
-Almacenamiento: SQLite con dos tablas:
-  usuarios(usuario, hash_password, rol, carrera)
-  sesiones(token, usuario, creado_en)
+Hacia afuera, las funciones siguen hablando en NOMBRES (rol="docente",
+carrera="computacion"); por dentro se resuelven a los ids de las tablas
+catalogo. Asi el resto del sistema no se entera de la normalizacion.
 
-La contrasena NUNCA se guarda en claro. Se guarda su HASH (PBKDF2-HMAC-SHA256
-con sal aleatoria y 200.000 iteraciones), un estandar recomendado por NIST.
+La contrasena NUNCA se guarda en claro: se guarda su HASH (PBKDF2-HMAC-SHA256
+con sal aleatoria y 200.000 iteraciones), estandar recomendado por NIST.
 """
-import os
-import sqlite3
 import hashlib
 import secrets
+import sqlite3
 import datetime as dt
 
-BASE = os.path.dirname(__file__)
-DB = os.path.join(os.path.dirname(BASE), "datos", "usuarios.db")
+from nucleo import bd
+
 ITERACIONES = 200_000   # coste del hash: alto = mas seguro y mas lento
 
 
@@ -29,7 +27,7 @@ ITERACIONES = 200_000   # coste del hash: alto = mas seguro y mas lento
 def _hashear(password, sal=None):
     """Devuelve 'sal$hash' listo para guardar en la BD."""
     if sal is None:
-        sal = secrets.token_hex(16)     # 32 caracteres hex aleatorios
+        sal = secrets.token_hex(16)
     h = hashlib.pbkdf2_hmac(
         "sha256", password.encode(), sal.encode(), ITERACIONES
     ).hex()
@@ -45,50 +43,37 @@ def _verificar(password, guardado):
     return _hashear(password, sal) == guardado
 
 
-# ---------- inicializacion de la BD ----------
-def _conexion():
-    os.makedirs(os.path.dirname(DB), exist_ok=True)
-    c = sqlite3.connect(DB, check_same_thread=False)
-    c.execute("""CREATE TABLE IF NOT EXISTS usuarios (
-        usuario TEXT PRIMARY KEY,
-        password TEXT NOT NULL,
-        rol TEXT NOT NULL,
-        carrera TEXT NOT NULL
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS sesiones (
-        token TEXT PRIMARY KEY,
-        usuario TEXT NOT NULL,
-        creado_en TEXT NOT NULL
-    )""")
-    return c
-
-
+# ---------- seed de usuarios demo ----------
 def _seed():
-    """Crea usuarios de demostracion la primera vez, si la tabla esta vacia."""
-    c = _conexion()
+    """Crea los usuarios de demostracion la primera vez (si no hay usuarios)."""
+    c = bd.conexion()
     n = c.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]
+    c.close()
     if n == 0:
         demos = [
-            ("estudiante", "demo2026", "estudiante", "computacion"),
-            ("docente",    "demo2026", "docente",    "computacion"),
+            ("estudiante", "demo2026", "estudiante",   "computacion"),
+            ("docente",    "demo2026", "docente",      "computacion"),
             ("coord",      "demo2026", "coordinacion", "computacion"),
         ]
         for u, p, r, ca in demos:
-            c.execute("INSERT INTO usuarios VALUES (?,?,?,?)",
-                      (u, _hashear(p), r, ca))
-        c.commit()
-    c.close()
+            crear_usuario(u, p, r, ca)
 
 
-# ---------- API publica ----------
+# ---------- CRUD de usuarios ----------
 def crear_usuario(usuario, password, rol, carrera):
-    """Alta manual de un usuario. Levanta ValueError si ya existe."""
-    if rol not in ("estudiante", "docente", "coordinacion"):
+    """Alta de un usuario. ValueError si el rol/carrera no existen o si ya existe."""
+    rid = bd.id_rol(rol)
+    if not rid:
         raise ValueError("Rol no valido.")
-    c = _conexion()
+    cid = bd.id_carrera(carrera)
+    if not cid:
+        raise ValueError("Carrera no valida.")
+    c = bd.conexion()
     try:
-        c.execute("INSERT INTO usuarios VALUES (?,?,?,?)",
-                  (usuario, _hashear(password), rol, carrera))
+        c.execute(
+            "INSERT INTO usuarios (usuario, password, rol_id, carrera_id) VALUES (?,?,?,?)",
+            (usuario, _hashear(password), rid, cid),
+        )
         c.commit()
     except sqlite3.IntegrityError:
         raise ValueError("Ese usuario ya existe.")
@@ -97,80 +82,88 @@ def crear_usuario(usuario, password, rol, carrera):
 
 
 def listar_usuarios():
-    """Devuelve la lista de todos los usuarios (sin contrasenas)."""
-    c = _conexion()
-    filas = c.execute(
-        "SELECT usuario, rol, carrera FROM usuarios ORDER BY usuario"
-    ).fetchall()
+    """Lista de usuarios con su rol y carrera (por nombre, via JOIN)."""
+    c = bd.conexion()
+    filas = c.execute("""
+        SELECT u.usuario, r.nombre, ca.nombre
+        FROM usuarios u
+        JOIN roles r     ON u.rol_id = r.id
+        JOIN carreras ca ON u.carrera_id = ca.id
+        ORDER BY u.usuario
+    """).fetchall()
     c.close()
     return [{"usuario": f[0], "rol": f[1], "carrera": f[2]} for f in filas]
 
 
 def actualizar_usuario(usuario, rol=None, carrera=None, nuevo_password=None):
     """
-    Actualiza rol, carrera y/o contrasena de un usuario existente.
-    Si se cambia la contrasena, se cierran todas sus sesiones activas.
+    Actualiza rol, carrera y/o contrasena de un usuario.
+    Cambiar la contrasena cierra todas sus sesiones activas.
     """
-    if rol is not None and rol not in ("estudiante", "docente", "coordinacion"):
-        raise ValueError("Rol no valido.")
-    c = _conexion()
-    existe = c.execute(
-        "SELECT usuario FROM usuarios WHERE usuario=?", (usuario,)
-    ).fetchone()
-    if not existe:
+    c = bd.conexion()
+    fila = c.execute("SELECT id FROM usuarios WHERE usuario=?", (usuario,)).fetchone()
+    if not fila:
         c.close()
         raise ValueError("Usuario no encontrado.")
+    uid = fila[0]
+
     if rol:
-        c.execute("UPDATE usuarios SET rol=? WHERE usuario=?", (rol, usuario))
+        rid = bd.id_rol(rol)
+        if not rid:
+            c.close()
+            raise ValueError("Rol no valido.")
+        c.execute("UPDATE usuarios SET rol_id=? WHERE id=?", (rid, uid))
     if carrera:
-        c.execute("UPDATE usuarios SET carrera=? WHERE usuario=?", (carrera, usuario))
+        cid = bd.id_carrera(carrera)
+        if not cid:
+            c.close()
+            raise ValueError("Carrera no valida.")
+        c.execute("UPDATE usuarios SET carrera_id=? WHERE id=?", (cid, uid))
     if nuevo_password:
-        c.execute(
-            "UPDATE usuarios SET password=? WHERE usuario=?",
-            (_hashear(nuevo_password), usuario),
-        )
-        c.execute("DELETE FROM sesiones WHERE usuario=?", (usuario,))
+        c.execute("UPDATE usuarios SET password=? WHERE id=?",
+                  (_hashear(nuevo_password), uid))
+        c.execute("DELETE FROM sesiones WHERE usuario_id=?", (uid,))
     c.commit()
     c.close()
 
 
 def borrar_usuario(usuario):
-    """Elimina un usuario y todas sus sesiones activas."""
-    c = _conexion()
-    c.execute("DELETE FROM sesiones WHERE usuario=?", (usuario,))
+    """Elimina un usuario. Sus sesiones caen solas por el ON DELETE CASCADE."""
+    c = bd.conexion()
     c.execute("DELETE FROM usuarios WHERE usuario=?", (usuario,))
     c.commit()
     c.close()
 
 
+# ---------- sesiones ----------
 def login(usuario, password):
-    """
-    Si las credenciales son correctas, crea una sesion y devuelve el token.
-    Si no, devuelve None.
-    """
-    c = _conexion()
+    """Si las credenciales son correctas, crea una sesion y devuelve el token."""
+    c = bd.conexion()
     fila = c.execute(
-        "SELECT password, rol, carrera FROM usuarios WHERE usuario=?", (usuario,)
+        "SELECT id, password FROM usuarios WHERE usuario=?", (usuario,)
     ).fetchone()
-    if not fila or not _verificar(password, fila[0]):
+    if not fila or not _verificar(password, fila[1]):
         c.close()
         return None
     token = secrets.token_urlsafe(32)
-    c.execute("INSERT INTO sesiones VALUES (?,?,?)",
-              (token, usuario, dt.datetime.now().isoformat()))
+    c.execute("INSERT INTO sesiones (token, usuario_id, creado_en) VALUES (?,?,?)",
+              (token, fila[0], dt.datetime.now().isoformat()))
     c.commit()
     c.close()
     return token
 
 
 def usuario_de(token):
-    """Devuelve el dict del usuario dueno del token, o None si no existe."""
+    """Dado un token, devuelve {usuario, rol, carrera} o None."""
     if not token:
         return None
-    c = _conexion()
+    c = bd.conexion()
     fila = c.execute("""
-        SELECT u.usuario, u.rol, u.carrera
-        FROM sesiones s JOIN usuarios u ON s.usuario = u.usuario
+        SELECT u.usuario, r.nombre, ca.nombre
+        FROM sesiones s
+        JOIN usuarios u  ON s.usuario_id = u.id
+        JOIN roles r     ON u.rol_id = r.id
+        JOIN carreras ca ON u.carrera_id = ca.id
         WHERE s.token = ?
     """, (token,)).fetchone()
     c.close()
@@ -181,7 +174,7 @@ def usuario_de(token):
 
 def logout(token):
     """Cierra la sesion (borra el token)."""
-    c = _conexion()
+    c = bd.conexion()
     c.execute("DELETE FROM sesiones WHERE token=?", (token,))
     c.commit()
     c.close()

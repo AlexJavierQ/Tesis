@@ -6,6 +6,7 @@
 # El indice (chroma_db) se regenera con `python -m nucleo.ingest`.
 datos/consultas.db
 datos/usuarios.db
+datos/sistema.db
 datos/chroma_db/
 
 # python
