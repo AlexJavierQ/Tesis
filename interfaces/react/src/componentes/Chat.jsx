@@ -2,40 +2,84 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 /**
- * Chat del estudiante.
- * - selecciona curso o "general" (reglamentos de la carrera)
- * - escribe pregunta -> muestra la respuesta con sus citas
+ * Chat del estudiante con HISTORIAL persistente.
+ *  - panel izquierdo: lista de "Mis conversaciones" + boton de nueva.
+ *  - panel derecho: el chat de la conversacion activa.
+ * Cada pregunta se guarda en la conversacion activa (en la BD). Al abrir una
+ * conversacion pasada, se recargan sus mensajes.
  */
 export default function Chat({ carrera }) {
   const [cursos, setCursos] = useState([]);
-  const [curso, setCurso] = useState("");         // "" = reglamentos generales
+  const [curso, setCurso] = useState("");           // "" = reglamentos generales
   const [pregunta, setPregunta] = useState("");
-  const [historial, setHistorial] = useState([]); // {rol, texto, citas?}
+  const [historial, setHistorial] = useState([]);   // mensajes visibles
   const [esperando, setEsperando] = useState(false);
+
+  const [conversaciones, setConversaciones] = useState([]);
+  const [convActual, setConvActual] = useState(null);  // id de la conversacion abierta
 
   useEffect(() => {
     if (carrera) api.cursos(carrera).then(setCursos).catch(() => setCursos([]));
   }, [carrera]);
+
+  useEffect(() => { recargarConversaciones(); }, []);
+
+  async function recargarConversaciones() {
+    try { setConversaciones(await api.conversaciones.listar()); }
+    catch { /* sin sesion o error: lista vacia */ }
+  }
+
+  function nuevaConversacion() {
+    // no se crea en la BD hasta la primera pregunta (evita conversaciones vacias)
+    setConvActual(null);
+    setHistorial([]);
+  }
+
+  async function abrirConversacion(id) {
+    try {
+      const msgs = await api.conversaciones.ver(id);
+      setConvActual(id);
+      setHistorial(msgs.map(m => ({ rol: m.rol, texto: m.texto, citas: m.citas })));
+    } catch (e) { alert("No pude abrir la conversación: " + e.message); }
+  }
+
+  async function borrarConversacion(id, e) {
+    e.stopPropagation();
+    if (!confirm("¿Borrar esta conversación?")) return;
+    try {
+      await api.conversaciones.borrar(id);
+      if (id === convActual) nuevaConversacion();
+      recargarConversaciones();
+    } catch (err) { alert(err.message); }
+  }
 
   async function enviar(e) {
     e.preventDefault();
     const q = pregunta.trim();
     if (!q || esperando) return;
     setPregunta("");
+
+    // asegurar que hay una conversacion activa (crearla con la 1a pregunta)
+    let convId = convActual;
+    if (!convId) {
+      try {
+        const r = await api.conversaciones.crear(q);
+        convId = r.id;
+        setConvActual(convId);
+      } catch { /* sin sesion: se sigue sin guardar */ }
+    }
+
     setHistorial(h => [...h, { rol: "user", texto: q }]);
     setEsperando(true);
     try {
-      const r = await api.preguntar(q, carrera, curso || null);
+      const r = await api.preguntar(q, carrera, curso || null, convId);
       setHistorial(h => [...h, {
-        rol: "bot",
-        texto: r.respuesta,
-        citas: r.citas,
-        conRespaldo: r.con_respaldo,
+        rol: "bot", texto: r.respuesta, citas: r.citas, conRespaldo: r.con_respaldo,
       }]);
+      recargarConversaciones();
     } catch (err) {
       setHistorial(h => [...h, {
-        rol: "bot",
-        error: true,
+        rol: "bot", error: true,
         texto: "No pude contactar la API: " + err.message,
       }]);
     } finally {
@@ -44,51 +88,73 @@ export default function Chat({ carrera }) {
   }
 
   return (
-    <div className="chat">
-      <div className="contexto">
-        <label>Tu curso (opcional):
-          <select value={curso} onChange={(e) => setCurso(e.target.value)}>
-            <option value="">— ninguno —</option>
-            {cursos.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-        <small className="contexto-ayuda">
-          Siempre se buscan los reglamentos generales de la carrera.
-          Si eliges un curso, tambien se buscan sus documentos.
-        </small>
-      </div>
+    <div className="chat-layout">
+      {/* ---- panel de conversaciones ---- */}
+      <aside className="conversaciones">
+        <button className="nueva-conv" onClick={nuevaConversacion}>+ Nueva conversación</button>
+        <h4>Mis conversaciones</h4>
+        {conversaciones.length === 0
+          ? <p className="vacio-chico">Aún no tienes conversaciones.</p>
+          : <ul>
+              {conversaciones.map(co => (
+                <li
+                  key={co.id}
+                  className={co.id === convActual ? "activa" : ""}
+                  onClick={() => abrirConversacion(co.id)}
+                >
+                  <span className="conv-titulo">{co.titulo}</span>
+                  <span className="conv-meta">{co.mensajes} mensajes · {co.iniciada_en}</span>
+                  <button className="conv-borrar" onClick={(e) => borrarConversacion(co.id, e)}>×</button>
+                </li>
+              ))}
+            </ul>}
+      </aside>
 
-      <div className="hilo">
-        {historial.length === 0 && (
-          <p className="vacio">Preguntame algo sobre el Practicum.</p>
-        )}
-        {historial.map((m, i) => (
-          <div key={i} className={"msg msg-" + m.rol + (m.error ? " error" : "")}>
-            <p>{m.texto}</p>
-            {m.citas?.length > 0 && (
-              <div className="citas">
-                <strong>De donde lo saque:</strong>
-                {m.citas.map((c, j) => (
-                  <span key={j} className="cita">
-                    {c.fuente} · pag. {c.pagina}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-        {esperando && <div className="msg msg-bot">Buscando...</div>}
-      </div>
+      {/* ---- chat ---- */}
+      <div className="chat">
+        <div className="contexto">
+          <label>Tu curso (opcional):
+            <select value={curso} onChange={(e) => setCurso(e.target.value)}>
+              <option value="">— ninguno —</option>
+              {cursos.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <small className="contexto-ayuda">
+            Siempre se buscan los reglamentos generales de la carrera.
+            Si eliges un curso, también se buscan sus documentos.
+          </small>
+        </div>
 
-      <form className="barra-entrada" onSubmit={enviar}>
-        <input
-          value={pregunta}
-          onChange={(e) => setPregunta(e.target.value)}
-          placeholder="Escribe tu pregunta..."
-          disabled={esperando}
-        />
-        <button type="submit" disabled={esperando || !pregunta.trim()}>Enviar</button>
-      </form>
+        <div className="hilo">
+          {historial.length === 0 && (
+            <p className="vacio">Pregúntame algo sobre el Prácticum.</p>
+          )}
+          {historial.map((m, i) => (
+            <div key={i} className={"msg msg-" + m.rol + (m.error ? " error" : "")}>
+              <p>{m.texto}</p>
+              {m.citas?.length > 0 && (
+                <div className="citas">
+                  <strong>De dónde lo saqué:</strong>
+                  {m.citas.map((c, j) => (
+                    <span key={j} className="cita">{c.fuente} · pág. {c.pagina}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {esperando && <div className="msg msg-bot">Buscando...</div>}
+        </div>
+
+        <form className="barra-entrada" onSubmit={enviar}>
+          <input
+            value={pregunta}
+            onChange={(e) => setPregunta(e.target.value)}
+            placeholder="Escribe tu pregunta..."
+            disabled={esperando}
+          />
+          <button type="submit" disabled={esperando || !pregunta.trim()}>Enviar</button>
+        </form>
+      </div>
     </div>
   );
 }

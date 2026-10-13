@@ -64,9 +64,33 @@ input, select { width: 100%; }
 
 .lienzo { flex: 1; overflow: auto; padding: 20px; }
 
-/* ---------- CHAT ---------- */
+/* ---------- CHAT con historial (2 columnas) ---------- */
+.chat-layout { display: flex; gap: 16px; height: 100%; max-width: 1050px; margin: 0 auto; }
+
+.conversaciones {
+  width: 250px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;
+  border-right: 1px solid var(--line); padding-right: 14px; overflow-y: auto;
+}
+.conversaciones h4 { margin: 4px 0; font-size: 12px; color: var(--gris); text-transform: uppercase; letter-spacing: .5px; }
+.nueva-conv { background: var(--grad); color: #fff; border: 0; padding: 10px; font-weight: 600; }
+.conversaciones ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.conversaciones li {
+  position: relative; padding: 9px 26px 9px 11px; border-radius: 8px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.conversaciones li:hover { border-color: var(--azul); }
+.conversaciones li.activa { border-color: var(--azul); background: var(--azul-suave); }
+.conv-titulo { display: block; font-size: 13px; color: var(--tinta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-meta { display: block; font-size: 11px; color: var(--gris); margin-top: 2px; }
+.conv-borrar {
+  position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; padding: 0;
+  border: 0; background: transparent; color: var(--gris); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.conv-borrar:hover { color: var(--rojo); }
+.vacio-chico { color: var(--gris); font-size: 12px; padding: 8px; }
+
 .chat {
-  max-width: 720px; margin: 0 auto; display: flex; flex-direction: column;
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
   gap: 14px; height: 100%;
 }
 .contexto label { display: flex; align-items: center; gap: 10px; color: var(--gris); font-size: 13px; }

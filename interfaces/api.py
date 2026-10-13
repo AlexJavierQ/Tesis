@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from nucleo import rag, ingest, vectorstore, pdfreader, metricas, auth, bd
+from nucleo import rag, ingest, vectorstore, pdfreader, metricas, auth, bd, historial
 
 app = FastAPI(title="API Asistente de Practicum", version="3.0")
 
@@ -50,6 +50,7 @@ class Consulta(BaseModel):
     pregunta: str
     carrera: str
     curso: Optional[str] = None
+    conversacion_id: Optional[int] = None   # si viene y hay sesion, se guarda al historial
 
 
 class UsuarioNuevo(BaseModel):
@@ -225,20 +226,66 @@ def borrar_usuario_api(usuario: str, authorization: str = Header(None)):
 
 # ==================== CONSULTA (publica: para el widget del portal) ====================
 @app.post("/preguntar")
-def preguntar(c: Consulta):
-    """Pregunta al asistente. Publica: el widget del portal puede llamar sin login."""
+def preguntar(c: Consulta, authorization: str = Header(None)):
+    """
+    Pregunta al asistente. Publica: el widget del portal puede llamar sin login.
+    Si viene una sesion valida y un conversacion_id propio, guarda el intercambio
+    en el historial del usuario.
+    """
     if not c.pregunta.strip():
         raise HTTPException(400, "La pregunta esta vacia.")
     r = rag.responder(c.pregunta, c.carrera, c.curso)
     scope_registro = f"{c.carrera}|curso:{c.curso}" if c.curso else f"{c.carrera}|global"
     metricas.registrar(c.pregunta, r["con_respaldo"], scope_registro)
-    # convertimos las citas a un formato con `ref` (ruta relativa lista para el visor)
+    citas = [{"fuente": ci["fuente"], "pagina": ci["pagina"], "ref": ci["path"]}
+             for ci in r["citas"]]
+
+    # persistencia del historial (solo si hay sesion y la conversacion es suya)
+    usuario = _sesion(authorization)
+    if usuario and c.conversacion_id and historial.es_dueno(c.conversacion_id, usuario["usuario"]):
+        historial.agregar_mensaje(c.conversacion_id, "user", c.pregunta)
+        historial.agregar_mensaje(c.conversacion_id, "bot", r["respuesta"], citas)
+
     return {
         "respuesta": r["respuesta"],
         "con_respaldo": r["con_respaldo"],
-        "citas": [{"fuente": ci["fuente"], "pagina": ci["pagina"], "ref": ci["path"]}
-                  for ci in r["citas"]],
+        "citas": citas,
     }
+
+
+# ==================== HISTORIAL DE CHAT (del usuario con sesion) ====================
+@app.get("/conversaciones")
+def listar_conversaciones(authorization: str = Header(None)):
+    """Lista las conversaciones del usuario actual."""
+    usuario = _exigir(authorization)
+    return historial.conversaciones_de(usuario["usuario"])
+
+
+@app.post("/conversaciones")
+def crear_conversacion_api(titulo: str = Form(""), authorization: str = Header(None)):
+    """Crea una conversacion nueva para el usuario y devuelve su id."""
+    usuario = _exigir(authorization)
+    cid = historial.crear_conversacion(usuario["usuario"], titulo)
+    return {"id": cid}
+
+
+@app.get("/conversaciones/{cid}")
+def ver_conversacion(cid: int, authorization: str = Header(None)):
+    """Mensajes de una conversacion. Solo su dueno."""
+    usuario = _exigir(authorization)
+    if not historial.es_dueno(cid, usuario["usuario"]):
+        raise HTTPException(403, "Esa conversacion no es tuya.")
+    return historial.mensajes_de(cid)
+
+
+@app.delete("/conversaciones/{cid}")
+def borrar_conversacion_api(cid: int, authorization: str = Header(None)):
+    """Borra una conversacion. Solo su dueno."""
+    usuario = _exigir(authorization)
+    if not historial.es_dueno(cid, usuario["usuario"]):
+        raise HTTPException(403, "Esa conversacion no es tuya.")
+    historial.borrar_conversacion(cid)
+    return {"ok": True}
 
 
 # ==================== DOCUMENTOS ====================

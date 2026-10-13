@@ -63,12 +63,27 @@ export const api = {
   },
 
   // consulta
-  preguntar: (pregunta, carrera, curso) =>
+  preguntar: (pregunta, carrera, curso, conversacionId) =>
     pedir("/preguntar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pregunta, carrera, curso: curso || null }),
+      body: JSON.stringify({
+        pregunta, carrera, curso: curso || null,
+        conversacion_id: conversacionId || null,
+      }),
     }),
+
+  // ---------- historial de chat ----------
+  conversaciones: {
+    listar: () => pedir("/conversaciones"),
+    crear: (titulo) => {
+      const fd = new FormData();
+      fd.append("titulo", titulo || "");
+      return pedir("/conversaciones", { method: "POST", body: fd });
+    },
+    ver: (id) => pedir(`/conversaciones/${id}`),
+    borrar: (id) => pedir(`/conversaciones/${id}`, { method: "DELETE" }),
+  },
 
   // documentos
   documentos: (carrera, curso) => {

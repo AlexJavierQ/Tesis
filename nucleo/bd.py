@@ -70,6 +70,22 @@ def _crear_tablas(c):
         usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
         creado_en   TEXT NOT NULL
     )""")
+    # historial de chat: un usuario tiene muchas conversaciones,
+    # cada conversacion tiene muchos mensajes.
+    c.execute("""CREATE TABLE IF NOT EXISTS conversaciones (
+        id          INTEGER PRIMARY KEY,
+        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        titulo      TEXT,
+        iniciada_en TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS mensajes (
+        id               INTEGER PRIMARY KEY,
+        conversacion_id  INTEGER NOT NULL REFERENCES conversaciones(id) ON DELETE CASCADE,
+        rol              TEXT NOT NULL,     -- 'user' | 'bot'
+        texto            TEXT NOT NULL,
+        citas            TEXT,              -- JSON de citas (solo mensajes del bot)
+        ts               TEXT NOT NULL
+    )""")
 
 
 def _seed(c):
@@ -109,11 +125,19 @@ def inicializar():
     c.close()
 
 
-# ---------- catalogo: roles ----------
+# ---------- helpers ----------
 def id_rol(nombre):
     """id del rol por su nombre, o None si no existe."""
     c = conexion()
     fila = c.execute("SELECT id FROM roles WHERE nombre=?", (nombre,)).fetchone()
+    c.close()
+    return fila[0] if fila else None
+
+
+def id_usuario(usuario):
+    """id del usuario por su nombre de usuario, o None si no existe."""
+    c = conexion()
+    fila = c.execute("SELECT id FROM usuarios WHERE usuario=?", (usuario,)).fetchone()
     c.close()
     return fila[0] if fila else None
 
