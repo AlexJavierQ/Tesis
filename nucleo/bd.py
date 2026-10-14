@@ -20,6 +20,7 @@ cursos existen lo decide esta base de datos, no el sistema de archivos.
 """
 import os
 import sqlite3
+import datetime as dt
 
 BASE = os.path.dirname(__file__)
 DB = os.path.join(os.path.dirname(BASE), "datos", "sistema.db")
@@ -69,6 +70,18 @@ def _crear_tablas(c):
         token       TEXT PRIMARY KEY,
         usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
         creado_en   TEXT NOT NULL
+    )""")
+    # catalogo de documentos del RAG: cada PDF indexado queda registrado aqui,
+    # con su carrera, su curso (NULL = documento global de la carrera) y cuantos
+    # fragmentos genero. Los vectores siguen en ChromaDB; esto es el catalogo.
+    c.execute("""CREATE TABLE IF NOT EXISTS documentos (
+        id          INTEGER PRIMARY KEY,
+        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
+        curso_id    INTEGER REFERENCES cursos(id) ON DELETE CASCADE,
+        nombre      TEXT NOT NULL,
+        ruta        TEXT UNIQUE NOT NULL,
+        fragmentos  INTEGER DEFAULT 0,
+        subido_en   TEXT NOT NULL
     )""")
     # historial de chat: un usuario tiene muchas conversaciones,
     # cada conversacion tiene muchos mensajes.
@@ -199,6 +212,69 @@ def crear_curso(carrera, nombre):
         raise ValueError("Ese curso ya existe.")
     finally:
         c.close()
+
+
+def id_curso(carrera, curso):
+    """id de un curso dentro de una carrera, o None."""
+    cid = id_carrera(carrera)
+    if not cid:
+        return None
+    c = conexion()
+    fila = c.execute(
+        "SELECT id FROM cursos WHERE carrera_id=? AND nombre=?", (cid, curso)
+    ).fetchone()
+    c.close()
+    return fila[0] if fila else None
+
+
+# ---------- catalogo: documentos ----------
+def registrar_documento(carrera, curso, nombre, ruta, fragmentos):
+    """
+    Registra (o reemplaza) un documento en el catalogo. curso=None -> global.
+    Se identifica por su ruta relativa; re-subir el mismo archivo actualiza su fila.
+    """
+    caid = id_carrera(carrera)
+    cuid = id_curso(carrera, curso) if curso else None
+    c = conexion()
+    c.execute("DELETE FROM documentos WHERE ruta=?", (ruta,))
+    c.execute(
+        "INSERT INTO documentos (carrera_id, curso_id, nombre, ruta, fragmentos, subido_en) "
+        "VALUES (?,?,?,?,?,?)",
+        (caid, cuid, nombre, ruta, fragmentos,
+         dt.datetime.now().strftime("%Y-%m-%d %H:%M")),
+    )
+    c.commit()
+    c.close()
+
+
+def documentos_de(carrera, curso=None):
+    """Lista los documentos de un ambito (global de la carrera, o de un curso)."""
+    caid = id_carrera(carrera)
+    if not caid:
+        return []
+    c = conexion()
+    if curso:
+        cuid = id_curso(carrera, curso)
+        filas = c.execute(
+            "SELECT nombre, ruta, fragmentos, subido_en FROM documentos "
+            "WHERE carrera_id=? AND curso_id=? ORDER BY nombre", (caid, cuid)
+        ).fetchall()
+    else:
+        filas = c.execute(
+            "SELECT nombre, ruta, fragmentos, subido_en FROM documentos "
+            "WHERE carrera_id=? AND curso_id IS NULL ORDER BY nombre", (caid,)
+        ).fetchall()
+    c.close()
+    return [{"nombre": f[0], "ruta": f[1], "fragmentos": f[2], "subido_en": f[3]}
+            for f in filas]
+
+
+def borrar_documento_registro(ruta):
+    """Quita un documento del catalogo por su ruta."""
+    c = conexion()
+    c.execute("DELETE FROM documentos WHERE ruta=?", (ruta,))
+    c.commit()
+    c.close()
 
 
 # al importar el modulo se asegura el esquema y los datos iniciales

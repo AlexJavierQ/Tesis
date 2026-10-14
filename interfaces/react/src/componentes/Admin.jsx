@@ -200,7 +200,7 @@ export default function Admin({ usuario }) {
             : <ul className="doc-lista">
                 {docs.map(d => (
                   <li key={d.ref}>
-                    <span>{d.nombre} · {d.paginas} pág.</span>
+                    <span>{d.nombre} · {d.fragmentos} fragmentos · {d.subido_en}</span>
                     <button onClick={() => borrar(d.nombre)}>Quitar</button>
                   </li>
                 ))}

@@ -234,15 +234,22 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
     """
     if not c.pregunta.strip():
         raise HTTPException(400, "La pregunta esta vacia.")
-    r = rag.responder(c.pregunta, c.carrera, c.curso)
+
+    # memoria conversacional: si hay sesion y conversacion propia, recuperar
+    # los mensajes previos para resolver seguimientos ("y como las distribuyo")
+    usuario = _sesion(authorization)
+    es_suya = (usuario and c.conversacion_id
+               and historial.es_dueno(c.conversacion_id, usuario["usuario"]))
+    mensajes_previos = historial.mensajes_de(c.conversacion_id) if es_suya else None
+
+    r = rag.responder(c.pregunta, c.carrera, c.curso, mensajes_previos)
     scope_registro = f"{c.carrera}|curso:{c.curso}" if c.curso else f"{c.carrera}|global"
     metricas.registrar(c.pregunta, r["con_respaldo"], scope_registro)
     citas = [{"fuente": ci["fuente"], "pagina": ci["pagina"], "ref": ci["path"]}
              for ci in r["citas"]]
 
-    # persistencia del historial (solo si hay sesion y la conversacion es suya)
-    usuario = _sesion(authorization)
-    if usuario and c.conversacion_id and historial.es_dueno(c.conversacion_id, usuario["usuario"]):
+    # persistencia del historial (solo si la conversacion es suya)
+    if es_suya:
         historial.agregar_mensaje(c.conversacion_id, "user", c.pregunta)
         historial.agregar_mensaje(c.conversacion_id, "bot", r["respuesta"], citas)
 
@@ -292,19 +299,11 @@ def borrar_conversacion_api(cid: int, authorization: str = Header(None)):
 @app.get("/documentos")
 def listar_documentos(carrera: str, curso: Optional[str] = None,
                       authorization: str = Header(None)):
-    """Lista los PDF de un ambito. Requiere sesion."""
+    """Lista los documentos de un ambito desde el catalogo (BD). Requiere sesion."""
     _exigir(authorization)
-    carpeta = rag.carpeta_curso(carrera, curso) if curso else rag.carpeta_global(carrera)
-    if not os.path.isdir(carpeta):
-        return []
-    salida = []
-    for nombre in sorted(os.listdir(carpeta)):
-        if nombre.lower().endswith(".pdf"):
-            p = os.path.join(carpeta, nombre)
-            rel = os.path.relpath(p, rag.DOCS).replace("\\", "/")
-            salida.append({"nombre": nombre, "ref": rel,
-                           "paginas": pdfreader.num_paginas(p)})
-    return salida
+    return [{"nombre": d["nombre"], "ref": d["ruta"],
+             "fragmentos": d["fragmentos"], "subido_en": d["subido_en"]}
+            for d in bd.documentos_de(carrera, curso)]
 
 
 @app.post("/documentos")

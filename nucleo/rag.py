@@ -12,6 +12,7 @@ Ambitos (scope): etiqueta que distingue de que documentos se puede leer.
   "<carrera>|curso:<curso>"   -> documentos de un curso especifico
 """
 import os
+import re
 from nucleo import vectorstore, llm, bd
 
 BASE = os.path.dirname(__file__)
@@ -75,6 +76,41 @@ def scopes_de(carrera, curso=None):
     if curso:
         s.append(f"{carrera}|curso:{curso}")
     return s
+
+
+# ---------- memoria conversacional ----------
+def _es_seguimiento(pregunta):
+    """
+    ¿La pregunta depende del turno anterior? ("y cuantas son", "como las
+    distribuyo"). Si es corta o empieza con un conector / pronombre, hay que
+    resolverla con el historial antes de buscar.
+    """
+    q = pregunta.lower().strip(" ?!.,")
+    if len(q.split()) <= 3:
+        return True
+    pistas = (r"^(y|pero|entonces|ademas|osea|o sea)\b",
+              r"\b(eso|esa|ese|esto|esas|esos|aquello|lo mismo|ahi)\b",
+              r"^(y\s+)?como\b", r"otra vez", r"mas (simple|detalle|claro|facil)")
+    return any(re.search(p, q) for p in pistas)
+
+
+def _ultima_pregunta_usuario(historial):
+    """Texto del ultimo mensaje con rol 'user' en el historial, o None."""
+    for m in reversed(historial or []):
+        if m.get("rol") in ("user", "usuario"):
+            return (m.get("texto") or "").strip()
+    return None
+
+
+def _contextualizar(pregunta, historial):
+    """
+    Ancla un seguimiento con la ULTIMA pregunta del usuario para que la
+    recuperacion tenga tema: "y como las distribuyo" se busca junto a
+    "cuantas horas necesito". Es concatenacion (deterministica, sin llamar
+    al LLM, sin deriva).
+    """
+    ultima = _ultima_pregunta_usuario(historial)
+    return f"{ultima} {pregunta}" if ultima else pregunta
 
 
 # ---------- helpers del flujo ----------
@@ -168,37 +204,46 @@ Al final agrega (Fuente: archivo, pag. X).
 Pregunta: {pregunta}"""
 
 
-def responder(pregunta, carrera, curso=None):
+def responder(pregunta, carrera, curso=None, historial=None):
     """
     Punto de entrada. Devuelve {respuesta, citas, con_respaldo}.
 
     Si hay curso, busca por SEPARADO en los reglamentos generales y en el
     material del curso; cuando ambos aportan, pide al modelo que distinga
     "en general" vs "en el curso". Sin curso, solo busca en los generales.
+
+    historial: mensajes previos de la conversacion [{rol, texto}]. Si la
+    pregunta es un seguimiento ("y como las distribuyo"), se ancla con la
+    pregunta anterior para que la busqueda tenga tema.
     """
     # capa social: saludos, gracias, "ayuda" -> respondemos sin buscar
     social = _mensaje_social(pregunta)
     if social is not None:
         return {"respuesta": social, "citas": [], "con_respaldo": True}
 
+    # memoria conversacional: si es seguimiento, ancla la busqueda y la pregunta
+    q = pregunta
+    if historial and _es_seguimiento(pregunta):
+        q = _contextualizar(pregunta, historial)
+
     if curso:
         generales = _bajo_umbral(vectorstore.buscar(
-            pregunta, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
+            q, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
         del_curso = _bajo_umbral(vectorstore.buscar(
-            pregunta, k=TOP_K, filtro={"scope": f"{carrera}|curso:{curso}"}))
+            q, k=TOP_K, filtro={"scope": f"{carrera}|curso:{curso}"}))
 
         if not generales and not del_curso:          # nada relevante -> abstencion
             return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
         if generales and del_curso:                  # ambos aportan -> distinguir
-            texto = llm.generar(_prompt_doble(pregunta, generales, del_curso, curso))
+            texto = llm.generar(_prompt_doble(q, generales, del_curso, curso))
             # citas: primero las del curso (mas especificas), luego las generales
             return _empaquetar(texto, del_curso + generales)
         usados = del_curso or generales              # solo uno aporta -> normal
-        return _empaquetar(llm.generar(_prompt(pregunta, usados)), usados)
+        return _empaquetar(llm.generar(_prompt(q, usados)), usados)
 
     # sin curso: solo reglamentos generales de la carrera
     generales = _bajo_umbral(vectorstore.buscar(
-        pregunta, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
+        q, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
     if not generales:
         return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
-    return _empaquetar(llm.generar(_prompt(pregunta, generales)), generales)
+    return _empaquetar(llm.generar(_prompt(q, generales)), generales)

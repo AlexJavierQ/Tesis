@@ -12,8 +12,15 @@ Estructura esperada de carpetas:
 """
 import os
 import glob
-from nucleo import pdfreader, vectorstore
+from nucleo import pdfreader, vectorstore, bd
 from nucleo.rag import DOCS
+
+
+def _carrera_curso(scope):
+    """De un scope 'carrera|global' o 'carrera|curso:X' saca (carrera, curso|None)."""
+    carrera, resto = scope.split("|", 1)
+    curso = resto.split("curso:", 1)[1] if resto.startswith("curso:") else None
+    return carrera, curso
 
 TAMANO = 500   # caracteres por fragmento
 SOLAPE = 80    # caracteres compartidos entre fragmentos vecinos (para no cortar frases)
@@ -59,12 +66,20 @@ def indexar_pdf(path, scope):
             ids.append(f"{scope}|{nombre}|{num_pag}|{j}")
     if textos:
         vectorstore.agregar(textos, metadatos, ids)
+
+    # registra el documento en el catalogo relacional (BD)
+    carrera, curso = _carrera_curso(scope)
+    bd.registrar_documento(carrera, curso, nombre, rel, len(textos))
     return len(textos)
 
 
 def borrar_documento(nombre, scope):
-    """Elimina todos los fragmentos de un archivo concreto."""
+    """Elimina los fragmentos de un archivo (ChromaDB) y su registro (catalogo BD)."""
     vectorstore.borrar({"$and": [{"fuente": nombre}, {"scope": scope}]})
+    carrera, curso = _carrera_curso(scope)
+    for d in bd.documentos_de(carrera, curso):
+        if d["nombre"] == nombre:
+            bd.borrar_documento_registro(d["ruta"])
 
 
 def indexar_todo():

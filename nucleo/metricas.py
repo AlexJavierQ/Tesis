@@ -21,10 +21,11 @@ def _conexion():
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     c = sqlite3.connect(DB, check_same_thread=False)
     c.execute("""CREATE TABLE IF NOT EXISTS consultas (
-        ts TEXT,
-        pregunta TEXT,
-        respondida INTEGER,
-        ambito TEXT
+        id          INTEGER PRIMARY KEY,
+        ts          TEXT,
+        pregunta    TEXT,
+        respondida  INTEGER,
+        ambito      TEXT
     )""")
     return c
 
@@ -32,7 +33,8 @@ def _conexion():
 def registrar(pregunta, con_respaldo, ambito):
     """Anota una consulta. con_respaldo True/False, ambito p.ej. 'computacion|global'."""
     c = _conexion()
-    c.execute("INSERT INTO consultas VALUES (?,?,?,?)",
+    # columnas explicitas: el id es autoincremental, no se envia
+    c.execute("INSERT INTO consultas (ts, pregunta, respondida, ambito) VALUES (?,?,?,?)",
               (dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
                pregunta, int(bool(con_respaldo)), ambito or ""))
     c.commit()
