@@ -77,55 +77,22 @@ def scopes_de(carrera, curso=None):
     return s
 
 
-# ---------- flujo principal ----------
-def _prompt(pregunta, hits):
-    """Construye el prompt con el contexto recuperado."""
-    contexto = "\n\n".join(
+# ---------- helpers del flujo ----------
+def _contexto(hits):
+    """Texto de los fragmentos, cada uno etiquetado con su fuente y pagina."""
+    return "\n\n".join(
         f"[Fuente: {h['meta']['fuente']}, pag. {h['meta']['pagina']}]\n{h['texto']}"
         for h in hits
     )
-    return f"""Eres el asistente de Practicum de la UTPL. Responde SOLO usando
-el contexto que sigue. Si el dato exacto no esta en el contexto, contesta
-EXACTAMENTE esto y nada mas:
-{ABSTENCION}
-
-Si tienes la respuesta, redactala breve y clara en espanol, y al final agrega
-(Fuente: archivo, pag. X).
-
-Contexto:
-{contexto}
-
-Pregunta: {pregunta}"""
 
 
-def responder(pregunta, carrera, curso=None):
-    """
-    Punto de entrada. Devuelve un diccionario con:
-      respuesta      -> texto para mostrar
-      citas          -> lista de {fuente, pagina, path} para el visor
-      con_respaldo   -> True si la respuesta se apoya en documentos
-    """
-    # capa social: saludos, gracias, "ayuda" -> respondemos sin buscar
-    social = _mensaje_social(pregunta)
-    if social is not None:
-        return {"respuesta": social, "citas": [], "con_respaldo": True}
+def _bajo_umbral(hits):
+    """Deja solo los fragmentos lo bastante parecidos (capa anti-alucinacion 1)."""
+    return [h for h in hits if h["distancia"] <= UMBRAL]
 
-    scopes = scopes_de(carrera, curso)
-    filtro = {"scope": {"$in": scopes}}
 
-    # 1. RECUPERAR fragmentos relevantes
-    hits = vectorstore.buscar(pregunta, k=TOP_K, filtro=filtro)
-    if not hits:
-        return {"respuesta": "Aun no hay documentos para responder esto.",
-                "citas": [], "con_respaldo": False}
-
-    # 2. UMBRAL (capa anti-alucinacion 1): si nada se parece lo suficiente,
-    #    no llamamos al LLM. Evita que responda desde su memoria general.
-    if min(h["distancia"] for h in hits) > UMBRAL:
-        return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
-
-    # 3. Preparar CITAS (fuentes distintas, hasta MAX_CITAS)
-    usados = [h for h in hits if h["distancia"] <= UMBRAL]
+def _citas_de(usados):
+    """Hasta MAX_CITAS fuentes distintas (sin repetir archivo+pagina)."""
     vistos, citas = set(), []
     for h in usados:
         clave = (h["meta"]["fuente"], h["meta"]["pagina"])
@@ -138,19 +105,100 @@ def responder(pregunta, carrera, curso=None):
             })
         if len(citas) >= MAX_CITAS:
             break
+    return citas
 
-    # 4. GENERAR con el LLM
-    texto = llm.generar(_prompt(pregunta, usados))
 
-    # 5. Si el LLM fallo o no hay key -> modo degradado: mostrar el contexto crudo
-    if not texto:
+def _empaquetar(texto, usados):
+    """
+    Arma la respuesta final a partir del texto del LLM y los fragmentos usados.
+    Cubre los 3 casos: LLM caido (modo degradado), abstencion, y respuesta ok.
+    """
+    citas = _citas_de(usados)
+    if not texto:  # LLM fallo o sin key -> mostrar el contexto crudo
         crudo = "\n\n".join(f"- {h['texto']} ({h['meta']['fuente']}, pag. {h['meta']['pagina']})"
                             for h in usados[:2])
         return {"respuesta": "(Segun los documentos oficiales:)\n\n" + crudo,
                 "citas": citas, "con_respaldo": True}
-
-    # 6. Si el modelo se abstuvo, no mostramos citas (coherencia)
-    if ABSTENCION[:30].lower() in texto.lower():
+    if ABSTENCION[:30].lower() in texto.lower():  # el modelo se abstuvo
         return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
-
     return {"respuesta": texto, "citas": citas, "con_respaldo": True}
+
+
+# ---------- prompts ----------
+def _prompt(pregunta, hits):
+    """Prompt normal: un solo bloque de contexto."""
+    return f"""Eres el asistente de Practicum de la UTPL. Responde SOLO usando
+el contexto que sigue. Si el dato exacto no esta en el contexto, contesta
+EXACTAMENTE esto y nada mas:
+{ABSTENCION}
+
+Si tienes la respuesta, redactala breve y clara en espanol, y al final agrega
+(Fuente: archivo, pag. X).
+
+Contexto:
+{_contexto(hits)}
+
+Pregunta: {pregunta}"""
+
+
+def _prompt_doble(pregunta, generales, del_curso, curso):
+    """
+    Prompt cuando hay contexto GENERAL (reglamentos de la carrera) Y ESPECIFICO
+    (material del curso). Le pide al modelo distinguir ambos en la respuesta.
+    """
+    return f"""Eres el asistente de Practicum de la UTPL. El estudiante pregunta
+desde el curso "{curso}". Tienes DOS fuentes de contexto.
+
+CONTEXTO GENERAL (reglamentos de la carrera):
+{_contexto(generales)}
+
+CONTEXTO ESPECIFICO DEL CURSO "{curso}":
+{_contexto(del_curso)}
+
+Responde SOLO con la informacion de los contextos. Si AMBOS aportan algo
+relevante, estructura la respuesta en dos lineas asi:
+  En general: <lo que dicen los reglamentos de la carrera>
+  En {curso}: <lo que dice el material del curso>
+Si solo uno de los dos aplica, responde directo sin esa estructura. Si el dato
+no esta en ningun contexto, responde EXACTAMENTE esto y nada mas:
+{ABSTENCION}
+
+Al final agrega (Fuente: archivo, pag. X).
+
+Pregunta: {pregunta}"""
+
+
+def responder(pregunta, carrera, curso=None):
+    """
+    Punto de entrada. Devuelve {respuesta, citas, con_respaldo}.
+
+    Si hay curso, busca por SEPARADO en los reglamentos generales y en el
+    material del curso; cuando ambos aportan, pide al modelo que distinga
+    "en general" vs "en el curso". Sin curso, solo busca en los generales.
+    """
+    # capa social: saludos, gracias, "ayuda" -> respondemos sin buscar
+    social = _mensaje_social(pregunta)
+    if social is not None:
+        return {"respuesta": social, "citas": [], "con_respaldo": True}
+
+    if curso:
+        generales = _bajo_umbral(vectorstore.buscar(
+            pregunta, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
+        del_curso = _bajo_umbral(vectorstore.buscar(
+            pregunta, k=TOP_K, filtro={"scope": f"{carrera}|curso:{curso}"}))
+
+        if not generales and not del_curso:          # nada relevante -> abstencion
+            return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
+        if generales and del_curso:                  # ambos aportan -> distinguir
+            texto = llm.generar(_prompt_doble(pregunta, generales, del_curso, curso))
+            # citas: primero las del curso (mas especificas), luego las generales
+            return _empaquetar(texto, del_curso + generales)
+        usados = del_curso or generales              # solo uno aporta -> normal
+        return _empaquetar(llm.generar(_prompt(pregunta, usados)), usados)
+
+    # sin curso: solo reglamentos generales de la carrera
+    generales = _bajo_umbral(vectorstore.buscar(
+        pregunta, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
+    if not generales:
+        return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
+    return _empaquetar(llm.generar(_prompt(pregunta, generales)), generales)
