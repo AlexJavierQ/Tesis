@@ -1,202 +1,386 @@
 # -*- coding: utf-8 -*-
 """
-MODELO DE DATOS RELACIONAL (SQLite normalizado).
+MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 2.
 
-Esta es la FUENTE DE VERDAD de la estructura del sistema: roles, carreras,
-cursos, usuarios y sesiones. Antes el rol y la carrera se guardaban como texto
-suelto y los cursos se descubrian leyendo carpetas; ahora todo vive en tablas
-relacionadas por claves foraneas (FK), que es un modelo mas robusto y sin
-datos duplicados.
+Es la FUENTE DE VERDAD del sistema. Todas las tablas viven en un solo archivo
+(datos/sistema.db) y se relacionan por claves foraneas (FK). Los vectores del
+RAG siguen en ChromaDB; los PDF siguen en carpetas (datos/docs/...).
 
-Tablas y relaciones:
-  roles(id, nombre)
-  carreras(id, nombre)
-  cursos(id, carrera_id -> carreras, nombre)
-  usuarios(id, usuario, password, rol_id -> roles, carrera_id -> carreras)
-  sesiones(token, usuario_id -> usuarios, creado_en)
+Tablas (13):
+  ESTRUCTURA ACADEMICA
+    facultades(id, nombre)
+    carreras(id, facultad_id -> facultades, nombre)
+    cursos(id, carrera_id -> carreras, nombre)
+  USUARIOS Y ACCESO
+    roles(id, nombre)
+    usuarios(id, usuario, nombre, correo, password, rol_id -> roles, activo, creado_en)
+    usuario_carrera(usuario_id -> usuarios, carrera_id -> carreras)   N:M
+    sesiones(token, usuario_id -> usuarios, creado_en, expira_en)
+  DOCUMENTOS DEL RAG
+    documentos(id, carrera_id, curso_id (NULL = global), nombre, activo, creado_en)
+    documento_versiones(id, documento_id -> documentos, numero, ruta,
+                        fragmentos, subido_por -> usuarios, subido_en)
+  CHAT
+    conversaciones(id, usuario_id -> usuarios, titulo, iniciada_en)
+    mensajes(id, conversacion_id -> conversaciones, rol, texto, citas, creado_en)
+  ANALITICA Y AUDITORIA
+    consultas(id, carrera_id, curso_id, usuario_id, modo, pregunta, respondida, creado_en)
+    logs(id, usuario_id, accion, detalle, creado_en)
 
-Los PDF siguen guardandose en carpetas (datos/docs/...), pero QUE carreras y
-cursos existen lo decide esta base de datos, no el sistema de archivos.
+ROBUSTEZ:
+  - Fechas declaradas como DATETIME, con valor por defecto y un CHECK que
+    rechaza cualquier texto que no sea una fecha valida.
+  - CHECK en los campos con valores cerrados (activo 0/1, rol del mensaje,
+    modo de consulta, formato de correo).
+  - Claves foraneas activas en cada conexion y ON DELETE definido en cada una.
+  - Cada operacion corre en una TRANSACCION: o se guarda todo o nada.
 """
 import os
 import sqlite3
-import datetime as dt
+from contextlib import contextmanager
 
 BASE = os.path.dirname(__file__)
 DB = os.path.join(os.path.dirname(BASE), "datos", "sistema.db")
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
+CONSULTAS_VIEJA = os.path.join(os.path.dirname(BASE), "datos", "consultas.db")
 
+VERSION_ESQUEMA = 2
 ROLES = ("estudiante", "docente", "coordinacion")
+FACULTAD_POR_DEFECTO = "Ingenierías y Arquitectura"
 CARRERA_POR_DEFECTO = "computacion"
 
 
 def conexion():
     """
     Abre una conexion a la BD relacional.
-    OJO: SQLite trae las claves foraneas DESACTIVADAS por defecto (por
-    compatibilidad historica). Hay que encenderlas en CADA conexion con el
-    PRAGMA, si no las FK no se verifican.
+    OJO: SQLite trae las claves foraneas DESACTIVADAS por defecto. Hay que
+    encenderlas en CADA conexion con el PRAGMA, si no las FK no se verifican.
     """
     os.makedirs(os.path.dirname(DB), exist_ok=True)
-    c = sqlite3.connect(DB, check_same_thread=False)
+    c = sqlite3.connect(DB, check_same_thread=False, timeout=10)
     c.execute("PRAGMA foreign_keys = ON")
     return c
 
 
-# ---------- creacion del esquema ----------
-def _crear_tablas(c):
-    c.execute("""CREATE TABLE IF NOT EXISTS roles (
-        id      INTEGER PRIMARY KEY,
-        nombre  TEXT UNIQUE NOT NULL
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS carreras (
-        id      INTEGER PRIMARY KEY,
-        nombre  TEXT UNIQUE NOT NULL
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS cursos (
-        id          INTEGER PRIMARY KEY,
-        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
-        nombre      TEXT NOT NULL,
-        UNIQUE (carrera_id, nombre)
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS usuarios (
-        id          INTEGER PRIMARY KEY,
-        usuario     TEXT UNIQUE NOT NULL,
-        password    TEXT NOT NULL,
-        rol_id      INTEGER NOT NULL REFERENCES roles(id),
-        carrera_id  INTEGER NOT NULL REFERENCES carreras(id)
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS sesiones (
-        token       TEXT PRIMARY KEY,
-        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-        creado_en   TEXT NOT NULL
-    )""")
-    # catalogo de documentos del RAG: cada PDF indexado queda registrado aqui,
-    # con su carrera, su curso (NULL = documento global de la carrera) y cuantos
-    # fragmentos genero. Los vectores siguen en ChromaDB; esto es el catalogo.
-    c.execute("""CREATE TABLE IF NOT EXISTS documentos (
-        id          INTEGER PRIMARY KEY,
-        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
-        curso_id    INTEGER REFERENCES cursos(id) ON DELETE CASCADE,
-        nombre      TEXT NOT NULL,
-        ruta        TEXT UNIQUE NOT NULL,
-        fragmentos  INTEGER DEFAULT 0,
-        subido_en   TEXT NOT NULL
-    )""")
-    # historial de chat: un usuario tiene muchas conversaciones,
-    # cada conversacion tiene muchos mensajes.
-    c.execute("""CREATE TABLE IF NOT EXISTS conversaciones (
-        id          INTEGER PRIMARY KEY,
-        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-        titulo      TEXT,
-        iniciada_en TEXT NOT NULL
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS mensajes (
-        id               INTEGER PRIMARY KEY,
-        conversacion_id  INTEGER NOT NULL REFERENCES conversaciones(id) ON DELETE CASCADE,
-        rol              TEXT NOT NULL,     -- 'user' | 'bot'
-        texto            TEXT NOT NULL,
-        citas            TEXT,              -- JSON de citas (solo mensajes del bot)
-        ts               TEXT NOT NULL
-    )""")
-
-
-def _seed(c):
+@contextmanager
+def transaccion():
     """
-    Siembra los datos iniciales y MIGRA la estructura que ya existia en disco.
-    - roles: los tres fijos.
-    - carreras y cursos: se descubren de las carpetas datos/docs/ existentes,
-      para no perder la estructura ya creada (p. ej. el curso 'Practicum 2').
-    (Los usuarios demo los siembra auth.py.)
+    Uso:  with bd.transaccion() as c:  c.execute(...)
+    Si todo sale bien hace COMMIT; si algo lanza un error hace ROLLBACK
+    (no queda nada a medias) y siempre cierra la conexion.
     """
-    for r in ROLES:
-        c.execute("INSERT OR IGNORE INTO roles (nombre) VALUES (?)", (r,))
-
-    c.execute("INSERT OR IGNORE INTO carreras (nombre) VALUES (?)",
-              (CARRERA_POR_DEFECTO,))
-
-    if os.path.isdir(DOCS):
-        for carrera in sorted(os.listdir(DOCS)):
-            cdir = os.path.join(DOCS, carrera)
-            if not os.path.isdir(cdir):
-                continue
-            c.execute("INSERT OR IGNORE INTO carreras (nombre) VALUES (?)", (carrera,))
-            cid = c.execute("SELECT id FROM carreras WHERE nombre=?", (carrera,)).fetchone()[0]
-            cursos_dir = os.path.join(cdir, "cursos")
-            if os.path.isdir(cursos_dir):
-                for curso in sorted(os.listdir(cursos_dir)):
-                    if os.path.isdir(os.path.join(cursos_dir, curso)):
-                        c.execute("INSERT OR IGNORE INTO cursos (carrera_id, nombre) VALUES (?,?)",
-                                  (cid, curso))
-    c.commit()
-
-
-def inicializar():
-    c = conexion()
-    _crear_tablas(c)
-    _seed(c)
-    c.close()
-
-
-# ---------- helpers ----------
-def id_rol(nombre):
-    """id del rol por su nombre, o None si no existe."""
-    c = conexion()
-    fila = c.execute("SELECT id FROM roles WHERE nombre=?", (nombre,)).fetchone()
-    c.close()
-    return fila[0] if fila else None
-
-
-def id_usuario(usuario):
-    """id del usuario por su nombre de usuario, o None si no existe."""
-    c = conexion()
-    fila = c.execute("SELECT id FROM usuarios WHERE usuario=?", (usuario,)).fetchone()
-    c.close()
-    return fila[0] if fila else None
-
-
-# ---------- catalogo: carreras ----------
-def carreras():
-    """Nombres de todas las carreras (orden alfabetico)."""
-    c = conexion()
-    filas = c.execute("SELECT nombre FROM carreras ORDER BY nombre").fetchall()
-    c.close()
-    return [f[0] for f in filas]
-
-
-def id_carrera(nombre):
-    """id de la carrera por su nombre, o None si no existe."""
-    c = conexion()
-    fila = c.execute("SELECT id FROM carreras WHERE nombre=?", (nombre,)).fetchone()
-    c.close()
-    return fila[0] if fila else None
-
-
-def crear_carrera(nombre):
-    """Alta de una carrera. Levanta ValueError si ya existe."""
     c = conexion()
     try:
-        c.execute("INSERT INTO carreras (nombre) VALUES (?)", (nombre,))
+        yield c
         c.commit()
-    except sqlite3.IntegrityError:
-        raise ValueError("Esa carrera ya existe.")
+    except Exception:
+        c.rollback()
+        raise
     finally:
         c.close()
 
 
-# ---------- catalogo: cursos ----------
+def _fecha(col):
+    """Columna de fecha: tipo DATETIME, se llena sola y solo acepta fechas validas."""
+    return (f"{col} DATETIME NOT NULL DEFAULT (datetime('now','localtime')) "
+            f"CHECK ({col} IS datetime({col}))")
+
+
+# ---------- creacion del esquema ----------
+def _crear_tablas(c):
+    # --- estructura academica ---
+    c.execute("""CREATE TABLE IF NOT EXISTS facultades (
+        id      INTEGER PRIMARY KEY,
+        nombre  TEXT UNIQUE NOT NULL CHECK (length(trim(nombre)) > 0)
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS carreras (
+        id           INTEGER PRIMARY KEY,
+        facultad_id  INTEGER NOT NULL REFERENCES facultades(id) ON DELETE RESTRICT,
+        nombre       TEXT UNIQUE NOT NULL CHECK (length(trim(nombre)) > 0)
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS cursos (
+        id          INTEGER PRIMARY KEY,
+        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
+        nombre      TEXT NOT NULL CHECK (length(trim(nombre)) > 0),
+        UNIQUE (carrera_id, nombre)
+    )""")
+
+    # --- usuarios y acceso ---
+    c.execute("""CREATE TABLE IF NOT EXISTS roles (
+        id      INTEGER PRIMARY KEY,
+        nombre  TEXT UNIQUE NOT NULL
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS usuarios (
+        id        INTEGER PRIMARY KEY,
+        usuario   TEXT UNIQUE NOT NULL CHECK (length(trim(usuario)) > 0),
+        nombre    TEXT NOT NULL,
+        correo    TEXT UNIQUE NOT NULL CHECK (correo LIKE '%_@_%._%'),
+        password  TEXT NOT NULL,
+        rol_id    INTEGER NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
+        activo    INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+        {_fecha("creado_en")}
+    )""")
+    # un usuario puede pertenecer a MUCHAS carreras (relacion N:M)
+    c.execute("""CREATE TABLE IF NOT EXISTS usuario_carrera (
+        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
+        PRIMARY KEY (usuario_id, carrera_id)
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS sesiones (
+        token       TEXT PRIMARY KEY,
+        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        {_fecha("creado_en")},
+        expira_en   DATETIME NOT NULL CHECK (expira_en IS datetime(expira_en))
+    )""")
+
+    # --- documentos del RAG ---
+    # el DOCUMENTO es la entidad estable ("Reglamento de Practicum");
+    # cada vez que se sube de nuevo se agrega una VERSION. curso_id NULL = global.
+    c.execute(f"""CREATE TABLE IF NOT EXISTS documentos (
+        id          INTEGER PRIMARY KEY,
+        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
+        curso_id    INTEGER REFERENCES cursos(id) ON DELETE CASCADE,
+        nombre      TEXT NOT NULL,
+        activo      INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+        {_fecha("creado_en")}
+    )""")
+    # UNIQUE normal no sirve aqui: en SQLite dos NULL no se consideran iguales.
+    # Con IFNULL, dos documentos globales con el mismo nombre si chocan.
+    c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS ux_documento_ambito
+        ON documentos (carrera_id, IFNULL(curso_id, 0), nombre)""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS documento_versiones (
+        id            INTEGER PRIMARY KEY,
+        documento_id  INTEGER NOT NULL REFERENCES documentos(id) ON DELETE CASCADE,
+        numero        INTEGER NOT NULL CHECK (numero >= 1),
+        ruta          TEXT UNIQUE NOT NULL,
+        fragmentos    INTEGER NOT NULL DEFAULT 0 CHECK (fragmentos >= 0),
+        subido_por    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+        {_fecha("subido_en")},
+        UNIQUE (documento_id, numero)
+    )""")
+
+    # --- chat ---
+    c.execute(f"""CREATE TABLE IF NOT EXISTS conversaciones (
+        id          INTEGER PRIMARY KEY,
+        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        titulo      TEXT NOT NULL,
+        {_fecha("iniciada_en")}
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS mensajes (
+        id               INTEGER PRIMARY KEY,
+        conversacion_id  INTEGER NOT NULL REFERENCES conversaciones(id) ON DELETE CASCADE,
+        rol              TEXT NOT NULL CHECK (rol IN ('user', 'bot')),
+        texto            TEXT NOT NULL,
+        citas            TEXT,              -- JSON de citas (solo mensajes del bot)
+        {_fecha("creado_en")}
+    )""")
+
+    # --- analitica y auditoria ---
+    # consultas ya NO esta aislada: se relaciona con carrera, curso y usuario.
+    # usuario_id es NULL cuando pregunta alguien sin sesion (widget publico).
+    c.execute(f"""CREATE TABLE IF NOT EXISTS consultas (
+        id          INTEGER PRIMARY KEY,
+        carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
+        curso_id    INTEGER REFERENCES cursos(id) ON DELETE SET NULL,
+        usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+        modo        TEXT NOT NULL CHECK (modo IN ('general', 'curso', 'ambos')),
+        pregunta    TEXT NOT NULL,
+        respondida  INTEGER NOT NULL CHECK (respondida IN (0, 1)),
+        {_fecha("creado_en")}
+    )""")
+    # bitacora: quien hizo que y cuando (login, altas, bajas, documentos...)
+    c.execute(f"""CREATE TABLE IF NOT EXISTS logs (
+        id          INTEGER PRIMARY KEY,
+        usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+        accion      TEXT NOT NULL,
+        detalle     TEXT,
+        {_fecha("creado_en")}
+    )""")
+
+    # indices sobre las FK mas consultadas (aceleran los JOIN y filtros)
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_cursos_carrera ON cursos(carrera_id)",
+        "CREATE INDEX IF NOT EXISTS ix_versiones_doc ON documento_versiones(documento_id)",
+        "CREATE INDEX IF NOT EXISTS ix_conv_usuario ON conversaciones(usuario_id)",
+        "CREATE INDEX IF NOT EXISTS ix_mensajes_conv ON mensajes(conversacion_id)",
+        "CREATE INDEX IF NOT EXISTS ix_consultas_carrera ON consultas(carrera_id, curso_id)",
+        "CREATE INDEX IF NOT EXISTS ix_logs_fecha ON logs(creado_en)",
+    ):
+        c.execute(sql)
+
+
+def _migrar_si_hace_falta(c):
+    """
+    Si sistema.db viene de la version 1 del esquema (sin facultades, con
+    usuarios.carrera_id, etc.), se borran sus tablas y se recrean. Solo
+    contenia datos demo; los documentos se vuelven a registrar al reindexar.
+    """
+    version = c.execute("PRAGMA user_version").fetchone()[0]
+    if version >= VERSION_ESQUEMA:
+        return
+    viejas = [f[0] for f in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+    if viejas:
+        print("[bd] Esquema antiguo detectado: se recrea sistema.db (version 2).")
+        c.execute("PRAGMA foreign_keys = OFF")
+        for t in viejas:
+            c.execute(f'DROP TABLE IF EXISTS "{t}"')
+        c.execute("PRAGMA foreign_keys = ON")
+    c.execute(f"PRAGMA user_version = {VERSION_ESQUEMA}")
+
+
+def _seed(c):
+    """
+    Datos iniciales:
+    - roles fijos y la facultad por defecto.
+    - carreras y cursos que ya existan como carpetas en datos/docs/ (asi no
+      se pierde la estructura creada antes, p. ej. el curso 'Practicum 2').
+    (Los usuarios demo los siembra auth.py.)
+    """
+    for r in ROLES:
+        c.execute("INSERT OR IGNORE INTO roles (nombre) VALUES (?)", (r,))
+    c.execute("INSERT OR IGNORE INTO facultades (nombre) VALUES (?)", (FACULTAD_POR_DEFECTO,))
+    fid = c.execute("SELECT id FROM facultades WHERE nombre=?",
+                    (FACULTAD_POR_DEFECTO,)).fetchone()[0]
+
+    carreras_disco = [CARRERA_POR_DEFECTO]
+    if os.path.isdir(DOCS):
+        carreras_disco += [d for d in sorted(os.listdir(DOCS))
+                           if os.path.isdir(os.path.join(DOCS, d))]
+    for carrera in carreras_disco:
+        c.execute("INSERT OR IGNORE INTO carreras (facultad_id, nombre) VALUES (?,?)",
+                  (fid, carrera))
+        cid = c.execute("SELECT id FROM carreras WHERE nombre=?", (carrera,)).fetchone()[0]
+        cursos_dir = os.path.join(DOCS, carrera, "cursos")
+        if os.path.isdir(cursos_dir):
+            for curso in sorted(os.listdir(cursos_dir)):
+                if os.path.isdir(os.path.join(cursos_dir, curso)):
+                    c.execute("INSERT OR IGNORE INTO cursos (carrera_id, nombre) VALUES (?,?)",
+                              (cid, curso))
+
+
+def _importar_consultas_viejas(c):
+    """
+    Las consultas antes vivian aisladas en datos/consultas.db. Si ese archivo
+    existe, se copian sus filas a la tabla consultas (ya relacionada) y el
+    archivo se renombra para no importarlo dos veces.
+    """
+    if not os.path.exists(CONSULTAS_VIEJA):
+        return
+    vieja = sqlite3.connect(CONSULTAS_VIEJA)
+    try:
+        filas = vieja.execute("SELECT ts, pregunta, respondida, ambito FROM consultas").fetchall()
+    except sqlite3.Error:
+        filas = []
+    vieja.close()
+    for ts, pregunta, respondida, ambito in filas:
+        carrera, _, resto = (ambito or "").partition("|")
+        caid = c.execute("SELECT id FROM carreras WHERE nombre=?", (carrera,)).fetchone()
+        if not caid or not pregunta:
+            continue
+        cuid, modo = None, "general"
+        if resto.startswith("curso:"):
+            fila = c.execute("SELECT id FROM cursos WHERE carrera_id=? AND nombre=?",
+                             (caid[0], resto[6:])).fetchone()
+            cuid, modo = (fila[0] if fila else None), "ambos"
+        c.execute("INSERT INTO consultas (carrera_id, curso_id, modo, pregunta, respondida, creado_en) "
+                  "VALUES (?,?,?,?,?,datetime(?))",
+                  (caid[0], cuid, modo, pregunta, int(bool(respondida)), ts))
+    os.replace(CONSULTAS_VIEJA, CONSULTAS_VIEJA + ".migrada")
+
+
+def inicializar():
+    with transaccion() as c:
+        _migrar_si_hace_falta(c)
+        _crear_tablas(c)
+        _seed(c)
+        _importar_consultas_viejas(c)
+
+
+# ---------- helpers de ids ----------
+def _id(c, sql, params):
+    fila = c.execute(sql, params).fetchone()
+    return fila[0] if fila else None
+
+
+def id_rol(nombre):
+    with transaccion() as c:
+        return _id(c, "SELECT id FROM roles WHERE nombre=?", (nombre,))
+
+
+def id_usuario(usuario):
+    with transaccion() as c:
+        return _id(c, "SELECT id FROM usuarios WHERE usuario=?", (usuario,))
+
+
+def id_carrera(nombre):
+    with transaccion() as c:
+        return _id(c, "SELECT id FROM carreras WHERE nombre=?", (nombre,))
+
+
+def id_curso(carrera, curso):
+    with transaccion() as c:
+        return _id(c, """SELECT cu.id FROM cursos cu JOIN carreras ca ON cu.carrera_id = ca.id
+                         WHERE ca.nombre=? AND cu.nombre=?""", (carrera, curso))
+
+
+# ---------- estructura: facultades ----------
+def facultades():
+    """Facultades con sus carreras: [{nombre, carreras: [...]}]."""
+    with transaccion() as c:
+        filas = c.execute("""
+            SELECT f.nombre, ca.nombre
+            FROM facultades f LEFT JOIN carreras ca ON ca.facultad_id = f.id
+            ORDER BY f.nombre, ca.nombre""").fetchall()
+    salida = {}
+    for fac, car in filas:
+        salida.setdefault(fac, [])
+        if car:
+            salida[fac].append(car)
+    return [{"nombre": f, "carreras": cs} for f, cs in salida.items()]
+
+
+def crear_facultad(nombre):
+    try:
+        with transaccion() as c:
+            c.execute("INSERT INTO facultades (nombre) VALUES (?)", (nombre,))
+    except sqlite3.IntegrityError:
+        raise ValueError("Esa facultad ya existe.")
+
+
+# ---------- estructura: carreras ----------
+def carreras():
+    """Nombres de todas las carreras (orden alfabetico)."""
+    with transaccion() as c:
+        return [f[0] for f in c.execute("SELECT nombre FROM carreras ORDER BY nombre")]
+
+
+def facultad_de(carrera):
+    """Nombre de la facultad a la que pertenece una carrera."""
+    with transaccion() as c:
+        return _id(c, """SELECT f.nombre FROM carreras ca JOIN facultades f
+                         ON ca.facultad_id = f.id WHERE ca.nombre=?""", (carrera,))
+
+
+def crear_carrera(nombre, facultad=FACULTAD_POR_DEFECTO):
+    """Alta de una carrera dentro de una facultad."""
+    with transaccion() as c:
+        fid = _id(c, "SELECT id FROM facultades WHERE nombre=?", (facultad,))
+        if not fid:
+            raise ValueError("Facultad no encontrada.")
+        try:
+            c.execute("INSERT INTO carreras (facultad_id, nombre) VALUES (?,?)", (fid, nombre))
+        except sqlite3.IntegrityError:
+            raise ValueError("Esa carrera ya existe.")
+
+
+# ---------- estructura: cursos ----------
 def cursos(carrera):
     """Nombres de los cursos de una carrera (JOIN cursos-carreras)."""
-    c = conexion()
-    filas = c.execute("""
-        SELECT cu.nombre
-        FROM cursos cu
-        JOIN carreras ca ON cu.carrera_id = ca.id
-        WHERE ca.nombre = ?
-        ORDER BY cu.nombre
-    """, (carrera,)).fetchall()
-    c.close()
-    return [f[0] for f in filas]
+    with transaccion() as c:
+        return [f[0] for f in c.execute("""
+            SELECT cu.nombre FROM cursos cu JOIN carreras ca ON cu.carrera_id = ca.id
+            WHERE ca.nombre = ? ORDER BY cu.nombre""", (carrera,))]
 
 
 def crear_curso(carrera, nombre):
@@ -204,77 +388,153 @@ def crear_curso(carrera, nombre):
     cid = id_carrera(carrera)
     if not cid:
         raise ValueError("Carrera no encontrada.")
-    c = conexion()
     try:
-        c.execute("INSERT INTO cursos (carrera_id, nombre) VALUES (?,?)", (cid, nombre))
-        c.commit()
+        with transaccion() as c:
+            c.execute("INSERT INTO cursos (carrera_id, nombre) VALUES (?,?)", (cid, nombre))
     except sqlite3.IntegrityError:
         raise ValueError("Ese curso ya existe.")
-    finally:
-        c.close()
 
 
-def id_curso(carrera, curso):
-    """id de un curso dentro de una carrera, o None."""
-    cid = id_carrera(carrera)
-    if not cid:
-        return None
-    c = conexion()
-    fila = c.execute(
-        "SELECT id FROM cursos WHERE carrera_id=? AND nombre=?", (cid, curso)
-    ).fetchone()
-    c.close()
-    return fila[0] if fila else None
+# ---------- documentos y versiones ----------
+_SQL_DOC = """
+    SELECT d.id, d.nombre, d.activo, v.numero, v.ruta, v.fragmentos, v.subido_en,
+           (SELECT COUNT(*) FROM documento_versiones x WHERE x.documento_id = d.id)
+    FROM documentos d
+    JOIN documento_versiones v ON v.documento_id = d.id
+    WHERE v.numero = (SELECT MAX(numero) FROM documento_versiones
+                      WHERE documento_id = d.id)
+"""
 
 
-# ---------- catalogo: documentos ----------
-def registrar_documento(carrera, curso, nombre, ruta, fragmentos):
-    """
-    Registra (o reemplaza) un documento en el catalogo. curso=None -> global.
-    Se identifica por su ruta relativa; re-subir el mismo archivo actualiza su fila.
-    """
+def _doc_dict(f):
+    return {"id": f[0], "nombre": f[1], "activo": bool(f[2]), "version": f[3],
+            "ruta": f[4], "fragmentos": f[5], "subido_en": f[6], "versiones": f[7]}
+
+
+def documento(carrera, curso, nombre):
+    """El documento (con su version vigente) de un ambito, o None."""
     caid = id_carrera(carrera)
     cuid = id_curso(carrera, curso) if curso else None
-    c = conexion()
-    c.execute("DELETE FROM documentos WHERE ruta=?", (ruta,))
-    c.execute(
-        "INSERT INTO documentos (carrera_id, curso_id, nombre, ruta, fragmentos, subido_en) "
-        "VALUES (?,?,?,?,?,?)",
-        (caid, cuid, nombre, ruta, fragmentos,
-         dt.datetime.now().strftime("%Y-%m-%d %H:%M")),
-    )
-    c.commit()
-    c.close()
+    with transaccion() as c:
+        f = c.execute(_SQL_DOC + " AND d.carrera_id=? AND IFNULL(d.curso_id,0)=? AND d.nombre=?",
+                      (caid, cuid or 0, nombre)).fetchone()
+    return _doc_dict(f) if f else None
+
+
+def documento_por_id(doc_id):
+    with transaccion() as c:
+        f = c.execute(_SQL_DOC + " AND d.id=?", (doc_id,)).fetchone()
+        if not f:
+            return None
+        d = _doc_dict(f)
+        amb = c.execute("""SELECT ca.nombre, cu.nombre FROM documentos d
+                           JOIN carreras ca ON d.carrera_id = ca.id
+                           LEFT JOIN cursos cu ON d.curso_id = cu.id
+                           WHERE d.id=?""", (doc_id,)).fetchone()
+    d["carrera"], d["curso"] = amb
+    return d
 
 
 def documentos_de(carrera, curso=None):
-    """Lista los documentos de un ambito (global de la carrera, o de un curso)."""
+    """Documentos de un ambito (global de la carrera, o de un curso), version vigente."""
     caid = id_carrera(carrera)
     if not caid:
         return []
-    c = conexion()
-    if curso:
-        cuid = id_curso(carrera, curso)
-        filas = c.execute(
-            "SELECT nombre, ruta, fragmentos, subido_en FROM documentos "
-            "WHERE carrera_id=? AND curso_id=? ORDER BY nombre", (caid, cuid)
-        ).fetchall()
-    else:
-        filas = c.execute(
-            "SELECT nombre, ruta, fragmentos, subido_en FROM documentos "
-            "WHERE carrera_id=? AND curso_id IS NULL ORDER BY nombre", (caid,)
-        ).fetchall()
-    c.close()
-    return [{"nombre": f[0], "ruta": f[1], "fragmentos": f[2], "subido_en": f[3]}
-            for f in filas]
+    cuid = id_curso(carrera, curso) if curso else None
+    with transaccion() as c:
+        filas = c.execute(_SQL_DOC + " AND d.carrera_id=? AND IFNULL(d.curso_id,0)=? ORDER BY d.nombre",
+                          (caid, cuid or 0)).fetchall()
+    return [_doc_dict(f) for f in filas]
 
 
-def borrar_documento_registro(ruta):
-    """Quita un documento del catalogo por su ruta."""
-    c = conexion()
-    c.execute("DELETE FROM documentos WHERE ruta=?", (ruta,))
-    c.commit()
-    c.close()
+def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None):
+    """
+    Registra una nueva version de un documento. Si el documento no existe,
+    lo crea (version 1). Devuelve el numero de version asignado.
+    """
+    caid = id_carrera(carrera)
+    if not caid:
+        raise ValueError("Carrera no encontrada.")
+    cuid = id_curso(carrera, curso) if curso else None
+    if curso and not cuid:
+        raise ValueError("Curso no encontrado.")
+    uid = id_usuario(usuario) if usuario else None
+    with transaccion() as c:
+        doc_id = _id(c, "SELECT id FROM documentos WHERE carrera_id=? AND IFNULL(curso_id,0)=? AND nombre=?",
+                     (caid, cuid or 0, nombre))
+        if not doc_id:
+            doc_id = c.execute("INSERT INTO documentos (carrera_id, curso_id, nombre) VALUES (?,?,?)",
+                               (caid, cuid, nombre)).lastrowid
+        numero = 1 + (_id(c, "SELECT MAX(numero) FROM documento_versiones WHERE documento_id=?",
+                          (doc_id,)) or 0)
+        c.execute("""INSERT INTO documento_versiones
+                     (documento_id, numero, ruta, fragmentos, subido_por) VALUES (?,?,?,?,?)""",
+                  (doc_id, numero, ruta, fragmentos, uid))
+    return numero
+
+
+def actualizar_fragmentos(ruta, fragmentos):
+    """Al reindexar, actualiza cuantos fragmentos genero la version vigente."""
+    with transaccion() as c:
+        c.execute("UPDATE documento_versiones SET fragmentos=? WHERE ruta=?", (fragmentos, ruta))
+
+
+def mover_version(ruta_vieja, ruta_nueva):
+    """Una version anterior se archiva en otra carpeta: se actualiza su ruta."""
+    with transaccion() as c:
+        c.execute("UPDATE documento_versiones SET ruta=? WHERE ruta=?", (ruta_nueva, ruta_vieja))
+
+
+def versiones_de(doc_id):
+    """Historial de versiones de un documento (la mas nueva primero)."""
+    with transaccion() as c:
+        filas = c.execute("""
+            SELECT v.numero, v.ruta, v.fragmentos, v.subido_en, u.usuario
+            FROM documento_versiones v LEFT JOIN usuarios u ON v.subido_por = u.id
+            WHERE v.documento_id=? ORDER BY v.numero DESC""", (doc_id,)).fetchall()
+    return [{"numero": f[0], "ruta": f[1], "fragmentos": f[2], "subido_en": f[3],
+             "subido_por": f[4] or "—"} for f in filas]
+
+
+def cambiar_estado_documento(doc_id, activo):
+    with transaccion() as c:
+        c.execute("UPDATE documentos SET activo=? WHERE id=?", (int(bool(activo)), doc_id))
+
+
+def borrar_documento(doc_id):
+    """Borra el documento (sus versiones caen por CASCADE). Devuelve las rutas de sus archivos."""
+    with transaccion() as c:
+        rutas = [f[0] for f in c.execute(
+            "SELECT ruta FROM documento_versiones WHERE documento_id=?", (doc_id,))]
+        c.execute("DELETE FROM documentos WHERE id=?", (doc_id,))
+    return rutas
+
+
+def esta_inactivo(ruta):
+    """True si la ruta pertenece a un documento desactivado (no se debe indexar)."""
+    with transaccion() as c:
+        return _id(c, """SELECT 1 FROM documento_versiones v JOIN documentos d
+                         ON v.documento_id = d.id WHERE v.ruta=? AND d.activo=0""",
+                   (ruta,)) is not None
+
+
+# ---------- bitacora (logs) ----------
+def log(accion, detalle="", usuario=None):
+    """Anota en la bitacora quien hizo que. usuario=None -> accion anonima/sistema."""
+    uid = id_usuario(usuario) if usuario else None
+    with transaccion() as c:
+        c.execute("INSERT INTO logs (usuario_id, accion, detalle) VALUES (?,?,?)",
+                  (uid, accion, detalle))
+
+
+def logs(limite=200):
+    """Ultimas entradas de la bitacora."""
+    with transaccion() as c:
+        filas = c.execute("""
+            SELECT l.creado_en, IFNULL(u.usuario, '—'), l.accion, IFNULL(l.detalle, '')
+            FROM logs l LEFT JOIN usuarios u ON l.usuario_id = u.id
+            ORDER BY l.id DESC LIMIT ?""", (limite,)).fetchall()
+    return [{"fecha": f[0], "usuario": f[1], "accion": f[2], "detalle": f[3]} for f in filas]
 
 
 # al importar el modulo se asegura el esquema y los datos iniciales

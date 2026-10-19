@@ -194,3 +194,22 @@ input, select { width: 100%; }
 .met-cuerpo { margin-top: 12px; }
 .met-cuerpo ul { padding-left: 20px; color: var(--gris); }
 .met-cuerpo em { color: var(--azul); font-style: normal; font-size: 12px; }
+
+/* ---------- documentos: estado y versiones ---------- */
+.doc-fila { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; }
+.doc-acciones { display: flex; gap: 6px; flex-shrink: 0; }
+.doc-acciones .btn-secundario { background: var(--surface); color: inherit; }
+.doc-lista li:has(.doc-fila) { flex-direction: column; align-items: stretch; }
+.doc-inactivo { opacity: 0.55; }
+.chip-inactivo { color: var(--rojo); font-style: normal; font-size: 12px; }
+.doc-versiones { list-style: none; margin: 6px 0 0 12px; padding: 0; font-size: 12px; color: var(--gris); }
+.doc-versiones li { border: 0 !important; padding: 2px 0 !important; }
+.checks { align-items: center; gap: 14px; }
+.checks label { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+.contexto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: var(--gris); font-size: 13px; }
+.contexto label { gap: 6px; }
+.contexto-ayuda { flex-basis: 100%; margin-top: 0; }
+input[type="radio"], input[type="checkbox"] { width: auto; padding: 0; margin: 0; }
+.contexto label, .checks label { white-space: nowrap; }
+.contexto select { width: auto; }
+.sesion select { width: auto; padding: 5px 8px; }

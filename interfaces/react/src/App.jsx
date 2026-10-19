@@ -16,15 +16,21 @@ export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [vista, setVista] = useState("chat"); // "chat" | "admin"
+  const [carrera, setCarrera] = useState(null); // carrera activa (un usuario puede tener varias)
 
   // al cargar, si hay token guardado, preguntamos "quien soy"
   useEffect(() => {
     if (!getToken()) { setCargando(false); return; }
     api.me()
-      .then(setUsuario)
+      .then(entrar)
       .catch(() => clearToken())
       .finally(() => setCargando(false));
   }, []);
+
+  function entrar(u) {
+    setUsuario(u);
+    setCarrera(u.carreras?.[0] || u.carrera);
+  }
 
   function cerrarSesion() {
     api.logout().catch(() => {});
@@ -33,7 +39,7 @@ export default function App() {
   }
 
   if (cargando) return <div className="pantalla">Cargando...</div>;
-  if (!usuario) return <Login onOk={setUsuario} />;
+  if (!usuario) return <Login onOk={entrar} />;
 
   const puedeAdmin = usuario.rol === "docente" || usuario.rol === "coordinacion";
 
@@ -54,15 +60,20 @@ export default function App() {
           )}
         </div>
         <div className="sesion">
-          <span>{usuario.usuario} · {usuario.rol}</span>
+          {usuario.carreras.length > 1
+            ? <select value={carrera} onChange={(e) => setCarrera(e.target.value)}>
+                {usuario.carreras.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            : <span>{carrera}</span>}
+          <span>{usuario.nombre} · {usuario.rol}</span>
           <button onClick={cerrarSesion}>Salir</button>
         </div>
       </header>
 
       <main className="lienzo">
         {vista === "chat"
-          ? <Chat carrera={usuario.carrera} />
-          : <Admin usuario={usuario} />}
+          ? <Chat key={carrera} carrera={carrera} />
+          : <Admin key={carrera} usuario={usuario} carrera={carrera} />}
       </main>
     </div>
   );

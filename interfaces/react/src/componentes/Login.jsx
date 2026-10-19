@@ -32,7 +32,7 @@ export default function Login({ onOk }) {
         <p className="ayuda">
           Usuarios de demo: <b>estudiante / docente / coord</b> — contrasena: <b>demo2026</b>
         </p>
-        <label>Usuario
+        <label>Usuario o correo
           <input value={usuario} onChange={(e) => setUsuario(e.target.value)} required autoFocus />
         </label>
         <label>Contrasena

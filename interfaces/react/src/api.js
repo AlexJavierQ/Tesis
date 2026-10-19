@@ -50,6 +50,7 @@ export const api = {
 
   // estructura
   salud: () => pedir("/salud"),
+  facultades: () => pedir("/facultades"),
   carreras: () => pedir("/carreras"),
   cursos: (carrera) => pedir(`/carreras/${encodeURIComponent(carrera)}/cursos`),
 
@@ -62,13 +63,13 @@ export const api = {
     });
   },
 
-  // consulta
-  preguntar: (pregunta, carrera, curso, conversacionId) =>
+  // consulta. modo: "general" | "curso" | "ambos" (desde donde se responde)
+  preguntar: (pregunta, carrera, curso, modo, conversacionId) =>
     pedir("/preguntar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        pregunta, carrera, curso: curso || null,
+        pregunta, carrera, curso: curso || null, modo,
         conversacion_id: conversacionId || null,
       }),
     }),
@@ -98,11 +99,17 @@ export const api = {
     if (curso) fd.append("curso", curso);
     return pedir("/documentos", { method: "POST", body: fd });
   },
-  borrar: (carrera, curso, nombre) => {
-    const q = new URLSearchParams({ carrera, nombre });
-    if (curso) q.append("curso", curso);
-    return pedir("/documentos?" + q, { method: "DELETE" });
-  },
+  borrar: (id) => pedir(`/documentos/${id}`, { method: "DELETE" }),
+  versiones: (id) => pedir(`/documentos/${id}/versiones`),
+  cambiarEstado: (id, activo) =>
+    pedir(`/documentos/${id}/estado`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo }),
+    }),
+
+  // bitacora (solo coord)
+  logs: () => pedir("/logs"),
 
   // metricas (coord: sin curso -> global de la carrera; docente: siempre con curso)
   metricas: (carrera, curso) => {

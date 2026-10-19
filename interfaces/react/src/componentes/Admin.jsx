@@ -4,11 +4,11 @@ import { api } from "../api";
 /**
  * Panel de gestion para docente y coordinacion.
  * Docente: pestanas Documentos, Cursos y Metricas.
- * Coordinacion: ademas la pestana Usuarios (CRUD de usuarios).
+ * Coordinacion: ademas Usuarios (CRUD) y Registro (bitacora de acciones).
+ * `carrera` es la carrera activa elegida en la barra superior.
  */
-export default function Admin({ usuario }) {
+export default function Admin({ usuario, carrera }) {
   const esCoord = usuario.rol === "coordinacion";
-  const carrera = usuario.carrera;
 
   const [pestana, setPestana] = useState("documentos");
   const [cursos, setCursos] = useState([]);
@@ -18,18 +18,31 @@ export default function Admin({ usuario }) {
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
   const [nuevoCurso, setNuevoCurso] = useState("");
+  const [facultad, setFacultad] = useState("");
+  const [versiones, setVersiones] = useState({});   // docId -> lista de versiones abierta
+  const [logs, setLogs] = useState([]);
 
   // gestion de usuarios (solo coord)
   const [usuarios, setUsuarios] = useState([]);
-  const [nuevoUsr, setNuevoUsr] = useState({
-    usuario: "", password: "", rol: "estudiante", carrera: carrera,
-  });
+  const [todasCarreras, setTodasCarreras] = useState([]);
+  const usuarioVacio = {
+    usuario: "", nombre: "", correo: "", password: "", rol: "estudiante", carreras: [carrera],
+  };
+  const [nuevoUsr, setNuevoUsr] = useState(usuarioVacio);
 
   useEffect(() => { recargarCursos(); }, [carrera]);
   useEffect(() => { recargarDocs(); }, [curso, pestana]);
   useEffect(() => {
     if (pestana === "usuarios" && esCoord) cargarUsuarios();
+    if (pestana === "registro" && esCoord) cargarLogs();
   }, [pestana]);
+  useEffect(() => {
+    api.carreras().then(setTodasCarreras).catch(() => {});
+    api.facultades().then(fs => {
+      const f = fs.find(f => f.carreras.includes(carrera));
+      setFacultad(f ? f.nombre : "");
+    }).catch(() => {});
+  }, [carrera]);
 
   async function recargarCursos() {
     try {
@@ -54,17 +67,41 @@ export default function Admin({ usuario }) {
     setAviso(null); setError(null);
     try {
       const r = await api.subir(carrera, curso || null, f);
-      setAviso(`"${r.archivo}" indexado (${r.fragmentos} fragmentos).`);
+      setAviso(r.version > 1
+        ? `"${r.archivo}" actualizado a la versión ${r.version} (${r.fragmentos} fragmentos).`
+        : `"${r.archivo}" indexado (${r.fragmentos} fragmentos).`);
       recargarDocs();
     } catch (err) { setError(err.message); }
   }
 
-  async function borrar(nombre) {
-    if (!confirm(`Quitar "${nombre}"?`)) return;
+  async function borrar(d) {
+    if (!confirm(`Quitar "${d.nombre}" con todas sus versiones?`)) return;
     try {
-      await api.borrar(carrera, curso || null, nombre);
+      await api.borrar(d.id);
       recargarDocs();
     } catch (err) { setError(err.message); }
+  }
+
+  async function cambiarEstado(d) {
+    setAviso(null); setError(null);
+    try {
+      await api.cambiarEstado(d.id, !d.activo);
+      setAviso(d.activo
+        ? `"${d.nombre}" desactivado: el chat ya no lo usa.`
+        : `"${d.nombre}" activado de nuevo.`);
+      recargarDocs();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function verVersiones(d) {
+    if (versiones[d.id]) {                       // si ya esta abierta, se cierra
+      const copia = { ...versiones };
+      delete copia[d.id];
+      setVersiones(copia);
+      return;
+    }
+    try { setVersiones({ ...versiones, [d.id]: await api.versiones(d.id) }); }
+    catch (err) { setError(err.message); }
   }
 
   async function crearCurso() {
@@ -89,17 +126,36 @@ export default function Admin({ usuario }) {
   }
 
   async function crearNuevoUsuario() {
-    if (!nuevoUsr.usuario.trim() || !nuevoUsr.password.trim()) {
-      setError("Usuario y contrasena obligatorios.");
-      return;
-    }
     setAviso(null); setError(null);
     try {
       await api.usuarios.crear(nuevoUsr);
       setAviso(`Usuario "${nuevoUsr.usuario}" creado.`);
-      setNuevoUsr({ usuario: "", password: "", rol: "estudiante", carrera });
+      setNuevoUsr(usuarioVacio);
       cargarUsuarios();
     } catch (e) { setError(e.message); }
+  }
+
+  function marcarCarrera(c) {
+    const ya = nuevoUsr.carreras.includes(c);
+    setNuevoUsr({
+      ...nuevoUsr,
+      carreras: ya ? nuevoUsr.carreras.filter(x => x !== c) : [...nuevoUsr.carreras, c],
+    });
+  }
+
+  async function cambiarActivoUsr(u) {
+    setAviso(null); setError(null);
+    try {
+      await api.usuarios.actualizar(u.usuario, { activo: !u.activo });
+      setAviso(`Usuario "${u.usuario}" ${u.activo ? "desactivado" : "activado"}.`);
+      cargarUsuarios();
+    } catch (e) { setError(e.message); }
+  }
+
+  async function cargarLogs() {
+    setError(null);
+    try { setLogs(await api.logs()); }
+    catch (e) { setError(e.message); }
   }
 
   async function cambiarRolUsr(u, nuevoRol) {
@@ -166,6 +222,12 @@ export default function Admin({ usuario }) {
             onClick={() => setPestana("usuarios")}
           >👥 Usuarios</button>
         )}
+        {esCoord && (
+          <button
+            className={pestana === "registro" ? "activo" : ""}
+            onClick={() => setPestana("registro")}
+          >🕑 Registro</button>
+        )}
       </nav>
 
       {aviso && <div className="aviso-ok">{aviso}</div>}
@@ -199,9 +261,32 @@ export default function Admin({ usuario }) {
             ? <p className="vacio">Aún no hay documentos en este ámbito.</p>
             : <ul className="doc-lista">
                 {docs.map(d => (
-                  <li key={d.ref}>
-                    <span>{d.nombre} · {d.fragmentos} fragmentos · {d.subido_en}</span>
-                    <button onClick={() => borrar(d.nombre)}>Quitar</button>
+                  <li key={d.id} className={d.activo ? "" : "doc-inactivo"}>
+                    <div className="doc-fila">
+                      <span>
+                        {d.nombre} · v{d.version} · {d.fragmentos} fragmentos · {d.subido_en}
+                        {!d.activo && <em className="chip-inactivo"> desactivado</em>}
+                      </span>
+                      <div className="doc-acciones">
+                        <button className="btn-secundario" onClick={() => verVersiones(d)}>
+                          Versiones ({d.versiones})
+                        </button>
+                        <button className="btn-secundario" onClick={() => cambiarEstado(d)}>
+                          {d.activo ? "Desactivar" : "Activar"}
+                        </button>
+                        <button onClick={() => borrar(d)}>Quitar</button>
+                      </div>
+                    </div>
+                    {versiones[d.id] && (
+                      <ul className="doc-versiones">
+                        {versiones[d.id].map(v => (
+                          <li key={v.numero}>
+                            v{v.numero} · {v.subido_en} · subido por {v.subido_por}
+                            {v.numero === d.version && " · vigente"}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ul>}
@@ -212,6 +297,7 @@ export default function Admin({ usuario }) {
         <section className="admin-seccion">
           <h3>Cursos de la carrera</h3>
           <p className="admin-nota">
+            {facultad && <>Facultad de {facultad} › carrera <b>{carrera}</b>. </>}
             Cada curso tiene sus propios documentos que solo afectan al chat de ese curso.
           </p>
 
@@ -336,7 +422,21 @@ export default function Admin({ usuario }) {
                 placeholder="ej: jperez"
               />
             </label>
-            <label>Contraseña:
+            <label>Nombre completo:
+              <input
+                value={nuevoUsr.nombre}
+                onChange={(e) => setNuevoUsr({ ...nuevoUsr, nombre: e.target.value })}
+              />
+            </label>
+            <label>Correo:
+              <input
+                type="email"
+                value={nuevoUsr.correo}
+                onChange={(e) => setNuevoUsr({ ...nuevoUsr, correo: e.target.value })}
+                placeholder="jperez@utpl.edu.ec"
+              />
+            </label>
+            <label>Contraseña (mín. 6):
               <input
                 type="password"
                 value={nuevoUsr.password}
@@ -353,15 +453,20 @@ export default function Admin({ usuario }) {
                 <option value="coordinacion">Coordinación</option>
               </select>
             </label>
-            <label>Carrera:
-              <input
-                value={nuevoUsr.carrera}
-                onChange={(e) => setNuevoUsr({ ...nuevoUsr, carrera: e.target.value })}
-              />
-            </label>
+          </div>
+          <div className="fila checks">
+            <span>Carreras:</span>
+            {todasCarreras.map(c => (
+              <label key={c}>
+                <input type="checkbox" checked={nuevoUsr.carreras.includes(c)}
+                       onChange={() => marcarCarrera(c)} /> {c}
+              </label>
+            ))}
             <button
               onClick={crearNuevoUsuario}
-              disabled={!nuevoUsr.usuario.trim() || !nuevoUsr.password.trim()}
+              disabled={!nuevoUsr.usuario.trim() || !nuevoUsr.nombre.trim()
+                        || !nuevoUsr.correo.trim() || nuevoUsr.password.length < 6
+                        || !nuevoUsr.carreras.length}
             >Crear usuario</button>
           </div>
 
@@ -372,18 +477,22 @@ export default function Admin({ usuario }) {
                 <thead>
                   <tr>
                     <th>Usuario</th>
+                    <th>Correo</th>
                     <th>Rol</th>
-                    <th>Carrera</th>
+                    <th>Carreras</th>
+                    <th>Estado</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {usuarios.map(u => (
-                    <tr key={u.usuario}>
+                    <tr key={u.usuario} className={u.activo ? "" : "doc-inactivo"}>
                       <td>
                         {u.usuario}
                         {u.usuario === usuario.usuario && <span className="chip-yo"> (tú)</span>}
+                        <br /><small>{u.nombre}</small>
                       </td>
+                      <td>{u.correo}</td>
                       <td>
                         <select
                           value={u.rol}
@@ -395,7 +504,15 @@ export default function Admin({ usuario }) {
                           <option value="coordinacion">Coordinación</option>
                         </select>
                       </td>
-                      <td>{u.carrera}</td>
+                      <td>{u.carreras.join(", ")}</td>
+                      <td>
+                        <button
+                          className="btn-secundario"
+                          onClick={() => cambiarActivoUsr(u)}
+                          disabled={u.usuario === usuario.usuario}
+                          title="Clic para cambiar"
+                        >{u.activo ? "Activo" : "Inactivo"}</button>
+                      </td>
                       <td>
                         <button
                           className="btn-secundario"
@@ -407,6 +524,32 @@ export default function Admin({ usuario }) {
                           disabled={u.usuario === usuario.usuario}
                         >Borrar</button>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>}
+        </section>
+      )}
+
+      {pestana === "registro" && esCoord && (
+        <section className="admin-seccion">
+          <h3>Registro de actividad</h3>
+          <p className="admin-nota">
+            Bitácora del sistema: quién hizo qué y cuándo (inicios de sesión,
+            cambios de usuarios, documentos subidos, activados o borrados).
+          </p>
+          <button onClick={cargarLogs}>🔄 Actualizar</button>
+          {logs.length === 0
+            ? <p className="vacio">Sin actividad registrada.</p>
+            : <table className="tabla-usuarios">
+                <thead>
+                  <tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr>
+                </thead>
+                <tbody>
+                  {logs.map((l, i) => (
+                    <tr key={i}>
+                      <td>{l.fecha}</td><td>{l.usuario}</td>
+                      <td>{l.accion}</td><td>{l.detalle}</td>
                     </tr>
                   ))}
                 </tbody>

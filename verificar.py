@@ -53,7 +53,7 @@ ok(f"{n} fragmentos indexados en ChromaDB")
 paso(4, "Probando login...")
 tok = auth.login("estudiante", "demo2026")
 if not tok:
-    fallo("Login del usuario 'estudiante' fallo. Revisa datos/usuarios.db")
+    fallo("Login del usuario 'estudiante' fallo. Revisa datos/sistema.db")
 u = auth.usuario_de(tok)
 if u["usuario"] != "estudiante" or u["rol"] != "estudiante":
     fallo(f"Sesion incoherente: {u}")
@@ -92,11 +92,30 @@ else:
 # ==================== 8. Metricas ====================
 paso(8, "Probando registro de metricas...")
 antes = len(metricas.listar())
-metricas.registrar("pregunta de prueba", True, "computacion|global")
+metricas.registrar("pregunta de prueba", True, "computacion")
 despues = len(metricas.listar())
 if despues != antes + 1:
     fallo(f"Metricas no se registran (antes={antes}, despues={despues})")
 ok(f"Metricas registran consultas ({despues} en total)")
+
+# ==================== 9. Modelo de datos ====================
+paso(9, "Comprobando el modelo relacional...")
+from nucleo import bd
+with bd.transaccion() as c:
+    tablas = {f[0] for f in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
+    huerfanas = c.execute("PRAGMA foreign_key_check").fetchall()
+    sin_catalogo = c.execute("SELECT COUNT(*) FROM documentos").fetchone()[0] == 0
+esperadas = {"facultades", "carreras", "cursos", "roles", "usuarios", "usuario_carrera",
+             "sesiones", "documentos", "documento_versiones", "conversaciones",
+             "mensajes", "consultas", "logs"}
+if esperadas - tablas:
+    fallo(f"Faltan tablas: {esperadas - tablas}")
+if huerfanas:
+    fallo(f"Hay filas que apuntan a registros inexistentes: {huerfanas[:3]}")
+if sin_catalogo:
+    fallo("El catalogo de documentos esta vacio. Corre: python -m nucleo.ingest")
+ok(f"{len(esperadas)} tablas, claves foraneas integras, catalogo de documentos con datos")
 
 # ==================== FIN ====================
 print("\n" + "=" * 60)

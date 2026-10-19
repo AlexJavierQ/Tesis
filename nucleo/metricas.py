@@ -1,63 +1,55 @@
 # -*- coding: utf-8 -*-
 """
-REGISTRO ANONIMO de consultas.
+REGISTRO DE CONSULTAS y metricas agregadas.
 
-Guarda: fecha, pregunta, si tuvo respaldo documental, y el ambito consultado.
-NO se guarda quien pregunto: es un registro AGREGADO para saber que se pregunta
-mas, no un log de usuarios.
+Las consultas viven en la tabla `consultas` de la BD principal (nucleo/bd.py),
+RELACIONADA con el resto del modelo:
+  consultas(id, carrera_id -> carreras, curso_id -> cursos,
+            usuario_id -> usuarios (NULL si pregunto alguien sin sesion),
+            modo, pregunta, respondida, creado_en)
 
-Uso: la API y la app registran cada consulta con `registrar(...)` y luego
-la pestana de metricas llama `resumen(...)` para pintar los agregados.
+Las METRICAS que se muestran son siempre AGREGADAS (totales, temas, vacios):
+el panel nunca muestra quien pregunto que.
+
+Uso: la API registra cada consulta con `registrar(...)` y la pestana de
+metricas llama `resumen(listar(...))`.
 """
-import os
-import sqlite3
-import datetime as dt
-
-BASE = os.path.dirname(__file__)
-DB = os.path.join(os.path.dirname(BASE), "datos", "consultas.db")
+from nucleo import bd
 
 
-def _conexion():
-    os.makedirs(os.path.dirname(DB), exist_ok=True)
-    c = sqlite3.connect(DB, check_same_thread=False)
-    c.execute("""CREATE TABLE IF NOT EXISTS consultas (
-        id          INTEGER PRIMARY KEY,
-        ts          TEXT,
-        pregunta    TEXT,
-        respondida  INTEGER,
-        ambito      TEXT
-    )""")
-    return c
+def registrar(pregunta, con_respaldo, carrera, curso=None, modo="general", usuario=None):
+    """Anota una consulta. Si la carrera no existe, no se registra (no rompe el chat)."""
+    caid = bd.id_carrera(carrera)
+    if not caid:
+        return
+    cuid = bd.id_curso(carrera, curso) if curso else None
+    uid = bd.id_usuario(usuario) if usuario else None
+    with bd.transaccion() as c:
+        c.execute("""INSERT INTO consultas
+                     (carrera_id, curso_id, usuario_id, modo, pregunta, respondida)
+                     VALUES (?,?,?,?,?,?)""",
+                  (caid, cuid, uid, modo, pregunta, int(bool(con_respaldo))))
 
 
-def registrar(pregunta, con_respaldo, ambito):
-    """Anota una consulta. con_respaldo True/False, ambito p.ej. 'computacion|global'."""
-    c = _conexion()
-    # columnas explicitas: el id es autoincremental, no se envia
-    c.execute("INSERT INTO consultas (ts, pregunta, respondida, ambito) VALUES (?,?,?,?)",
-              (dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
-               pregunta, int(bool(con_respaldo)), ambito or ""))
-    c.commit()
-    c.close()
-
-
-def listar(prefijo=None):
+def listar(carrera=None, curso=None):
     """
-    Devuelve las consultas registradas (mas recientes primero).
-    prefijo: por ejemplo 'computacion|' para todas las de esa carrera.
+    Consultas registradas (mas recientes primero) como (fecha, pregunta, respondida).
+    Sin filtros: todas. Con carrera: las de esa carrera. Con curso: las de ese curso.
     """
-    c = _conexion()
-    if prefijo:
-        filas = c.execute(
-            "SELECT ts, pregunta, respondida, ambito FROM consultas "
-            "WHERE ambito LIKE ? ORDER BY ts DESC", (prefijo + "%",)
-        ).fetchall()
-    else:
-        filas = c.execute(
-            "SELECT ts, pregunta, respondida, ambito FROM consultas ORDER BY ts DESC"
-        ).fetchall()
-    c.close()
-    return filas
+    sql = """SELECT co.creado_en, co.pregunta, co.respondida
+             FROM consultas co
+             JOIN carreras ca ON co.carrera_id = ca.id
+             LEFT JOIN cursos cu ON co.curso_id = cu.id
+             WHERE 1=1"""
+    params = []
+    if carrera:
+        sql += " AND ca.nombre = ?"
+        params.append(carrera)
+    if curso:
+        sql += " AND cu.nombre = ?"
+        params.append(curso)
+    with bd.transaccion() as c:
+        return c.execute(sql + " ORDER BY co.id DESC", params).fetchall()
 
 
 # similitud minima (coseno) para considerar que dos preguntas son el MISMO tema.

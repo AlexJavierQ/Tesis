@@ -37,10 +37,12 @@ def paso(texto):
 
 def preparar():
     """Indexa si el vectorstore esta vacio y siembra usuarios (auth lo hace al importar)."""
-    from nucleo import vectorstore, ingest, auth  # noqa: F401  (auth crea usuarios demo)
+    from nucleo import vectorstore, ingest, auth, bd  # noqa: F401  (auth crea usuarios demo)
 
-    if vectorstore.contar() == 0:
-        paso("Indice vacio. Indexando el corpus de datos/docs/...")
+    with bd.transaccion() as c:
+        catalogo_vacio = c.execute("SELECT COUNT(*) FROM documentos").fetchone()[0] == 0
+    if vectorstore.contar() == 0 or catalogo_vacio:
+        paso("Indice o catalogo vacio. Indexando el corpus de datos/docs/...")
         ingest.indexar_todo()
     else:
         paso(f"Indice OK ({vectorstore.contar()} fragmentos).")

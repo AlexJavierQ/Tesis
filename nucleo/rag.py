@@ -204,46 +204,65 @@ Al final agrega (Fuente: archivo, pag. X).
 Pregunta: {pregunta}"""
 
 
-def responder(pregunta, carrera, curso=None, historial=None):
-    """
-    Punto de entrada. Devuelve {respuesta, citas, con_respaldo}.
+MODOS = ("general", "curso", "ambos")
 
-    Si hay curso, busca por SEPARADO en los reglamentos generales y en el
-    material del curso; cuando ambos aportan, pide al modelo que distinga
-    "en general" vs "en el curso". Sin curso, solo busca en los generales.
+
+def _buscar(q, carrera, curso=None):
+    """Busca en UN ambito (global de la carrera, o un curso) y aplica el umbral."""
+    scope = f"{carrera}|curso:{curso}" if curso else f"{carrera}|global"
+    return _bajo_umbral(vectorstore.buscar(q, k=TOP_K, filtro={"scope": scope}))
+
+
+def modo_efectivo(curso, modo):
+    """
+    El estudiante elige en el chat desde donde quiere la respuesta:
+      general -> solo los reglamentos generales de la carrera
+      curso   -> solo el material del curso elegido
+      ambos   -> los dos, distinguiendo "En general" / "En <curso>"
+    Si no elige (p. ej. el widget publico): con curso = ambos, sin curso = general.
+    Sin curso no se puede responder "desde un curso": se cae a general.
+    """
+    if modo not in MODOS:
+        modo = "ambos" if curso else "general"
+    if not curso:
+        modo = "general"
+    return modo
+
+
+def responder(pregunta, carrera, curso=None, historial=None, modo=None):
+    """
+    Punto de entrada. Devuelve {respuesta, citas, con_respaldo, modo}.
+
+    modo: "general" | "curso" | "ambos" (ver modo_efectivo).
 
     historial: mensajes previos de la conversacion [{rol, texto}]. Si la
     pregunta es un seguimiento ("y como las distribuyo"), se ancla con la
     pregunta anterior para que la busqueda tenga tema.
     """
+    modo = modo_efectivo(curso, modo)
+
     # capa social: saludos, gracias, "ayuda" -> respondemos sin buscar
     social = _mensaje_social(pregunta)
     if social is not None:
-        return {"respuesta": social, "citas": [], "con_respaldo": True}
+        return {"respuesta": social, "citas": [], "con_respaldo": True, "modo": modo}
 
     # memoria conversacional: si es seguimiento, ancla la busqueda y la pregunta
     q = pregunta
     if historial and _es_seguimiento(pregunta):
         q = _contextualizar(pregunta, historial)
 
-    if curso:
-        generales = _bajo_umbral(vectorstore.buscar(
-            q, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
-        del_curso = _bajo_umbral(vectorstore.buscar(
-            q, k=TOP_K, filtro={"scope": f"{carrera}|curso:{curso}"}))
+    generales = _buscar(q, carrera) if modo in ("general", "ambos") else []
+    del_curso = _buscar(q, carrera, curso) if modo in ("curso", "ambos") else []
 
-        if not generales and not del_curso:          # nada relevante -> abstencion
-            return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
-        if generales and del_curso:                  # ambos aportan -> distinguir
-            texto = llm.generar(_prompt_doble(q, generales, del_curso, curso))
-            # citas: primero las del curso (mas especificas), luego las generales
-            return _empaquetar(texto, del_curso + generales)
-        usados = del_curso or generales              # solo uno aporta -> normal
-        return _empaquetar(llm.generar(_prompt(q, usados)), usados)
-
-    # sin curso: solo reglamentos generales de la carrera
-    generales = _bajo_umbral(vectorstore.buscar(
-        q, k=TOP_K, filtro={"scope": f"{carrera}|global"}))
-    if not generales:
-        return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
-    return _empaquetar(llm.generar(_prompt(q, generales)), generales)
+    if not generales and not del_curso:              # nada relevante -> abstencion
+        r = {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
+    elif generales and del_curso:                    # ambos aportan -> distinguir
+        texto = llm.generar(_prompt_doble(q, generales, del_curso, curso))
+        # citas: dos del curso (mas especificas) y luego las generales, para
+        # que el estudiante vea respaldo de AMBAS fuentes
+        r = _empaquetar(texto, del_curso[:2] + generales + del_curso[2:])
+    else:                                            # solo uno aporta -> normal
+        usados = del_curso or generales
+        r = _empaquetar(llm.generar(_prompt(q, usados)), usados)
+    r["modo"] = modo
+    return r

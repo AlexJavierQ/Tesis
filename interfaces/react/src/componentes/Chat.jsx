@@ -10,7 +10,8 @@ import { api } from "../api";
  */
 export default function Chat({ carrera }) {
   const [cursos, setCursos] = useState([]);
-  const [curso, setCurso] = useState("");           // "" = reglamentos generales
+  const [modo, setModo] = useState("general");      // general | curso | ambos
+  const [curso, setCurso] = useState("");
   const [pregunta, setPregunta] = useState("");
   const [historial, setHistorial] = useState([]);   // mensajes visibles
   const [esperando, setEsperando] = useState(false);
@@ -19,7 +20,10 @@ export default function Chat({ carrera }) {
   const [convActual, setConvActual] = useState(null);  // id de la conversacion abierta
 
   useEffect(() => {
-    if (carrera) api.cursos(carrera).then(setCursos).catch(() => setCursos([]));
+    if (carrera) api.cursos(carrera).then(cs => {
+      setCursos(cs);
+      setCurso(cs[0] || "");
+    }).catch(() => setCursos([]));
   }, [carrera]);
 
   useEffect(() => { recargarConversaciones(); }, []);
@@ -72,7 +76,8 @@ export default function Chat({ carrera }) {
     setHistorial(h => [...h, { rol: "user", texto: q }]);
     setEsperando(true);
     try {
-      const r = await api.preguntar(q, carrera, curso || null, convId);
+      const usaCurso = modo !== "general";
+      const r = await api.preguntar(q, carrera, usaCurso ? curso : null, modo, convId);
       setHistorial(h => [...h, {
         rol: "bot", texto: r.respuesta, citas: r.citas, conRespaldo: r.con_respaldo,
       }]);
@@ -113,15 +118,22 @@ export default function Chat({ carrera }) {
       {/* ---- chat ---- */}
       <div className="chat">
         <div className="contexto">
-          <label>Tu curso (opcional):
+          <span>Responder desde:</span>
+          <label><input type="radio" checked={modo === "general"}
+                        onChange={() => setModo("general")} /> Reglamento general</label>
+          <label><input type="radio" checked={modo === "curso"} disabled={!cursos.length}
+                        onChange={() => setModo("curso")} /> Solo un curso</label>
+          <label><input type="radio" checked={modo === "ambos"} disabled={!cursos.length}
+                        onChange={() => setModo("ambos")} /> General + curso</label>
+          {modo !== "general" && (
             <select value={curso} onChange={(e) => setCurso(e.target.value)}>
-              <option value="">— ninguno —</option>
               {cursos.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-          </label>
+          )}
           <small className="contexto-ayuda">
-            Siempre se buscan los reglamentos generales de la carrera.
-            Si eliges un curso, también se buscan sus documentos.
+            {modo === "general" && "Solo se buscan los reglamentos generales de la carrera."}
+            {modo === "curso" && "Solo se busca en el material del curso elegido."}
+            {modo === "ambos" && "Se buscan ambos y la respuesta distingue lo general de lo del curso."}
           </small>
         </div>
 
