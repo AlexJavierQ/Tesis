@@ -13,7 +13,8 @@ Ambitos (scope): etiqueta que distingue de que documentos se puede leer.
 """
 import os
 import re
-from nucleo import vectorstore, llm, bd, parametros
+import unicodedata
+from nucleo import vectorstore, llm, bd, parametros, memoria as memoria_conv
 
 BASE = os.path.dirname(__file__)
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
@@ -81,7 +82,9 @@ def _es_seguimiento(pregunta):
     distribuyo"). Si es corta o empieza con un conector / pronombre, hay que
     resolverla con el historial antes de buscar.
     """
-    q = pregunta.lower().strip(" ?!.,")
+    # minusculas, sin tildes ("cómo" -> "como") y sin signos al inicio/final
+    q = unicodedata.normalize("NFD", pregunta.lower())
+    q = "".join(ch for ch in q if unicodedata.category(ch) != "Mn").strip(" ?!.,¿¡")
     if len(q.split()) <= 3:
         return True
     pistas = (r"^(y|pero|entonces|ademas|osea|o sea)\b",
@@ -228,27 +231,47 @@ def modo_efectivo(curso, modo):
     return modo
 
 
-def responder(pregunta, carrera, curso=None, historial=None, modo=None):
+def interpretar(pregunta, memoria):
     """
-    Punto de entrada. Devuelve {respuesta, citas, con_respaldo, modo}.
+    Convierte la pregunta en una que se entienda sola, usando la memoria.
+      - modo "resumen": el modelo la reescribe con ventana + resumen. Si el
+        modelo falla, plan B: concatenacion.
+      - modo "concatenacion": si parece seguimiento, se le pega la pregunta
+        anterior del estudiante.
+    Sin memoria (primera pregunta o widget publico) se devuelve igual.
+    """
+    if not memoria or not (memoria.get("recientes") or memoria.get("resumen")):
+        return pregunta
+    if memoria_conv.modo() == "resumen":
+        reescrita = memoria_conv.reescribir(pregunta, memoria)
+        if reescrita:
+            return reescrita
+    if _es_seguimiento(pregunta):
+        return _contextualizar(pregunta, memoria.get("recientes"))
+    return pregunta
+
+
+def responder(pregunta, carrera, curso=None, memoria=None, modo=None):
+    """
+    Punto de entrada. Devuelve {respuesta, citas, con_respaldo, modo,
+    pregunta_interpretada}.
 
     modo: "general" | "curso" | "ambos" (ver modo_efectivo).
 
-    historial: mensajes previos de la conversacion [{rol, texto}]. Si la
-    pregunta es un seguimiento ("y como las distribuyo"), se ancla con la
-    pregunta anterior para que la busqueda tenga tema.
+    memoria: contexto de la conversacion {"resumen", "recientes"} armado por
+    nucleo/memoria.py. Se usa SOLO para entender la pregunta; la respuesta
+    sale unicamente de los documentos recuperados.
     """
     modo = modo_efectivo(curso, modo)
 
     # capa social: saludos, gracias, "ayuda" -> respondemos sin buscar
     social = _mensaje_social(pregunta)
     if social is not None:
-        return {"respuesta": social, "citas": [], "con_respaldo": True, "modo": modo}
+        return {"respuesta": social, "citas": [], "con_respaldo": True, "modo": modo,
+                "pregunta_interpretada": pregunta}
 
-    # memoria conversacional: si es seguimiento, ancla la busqueda y la pregunta
-    q = pregunta
-    if historial and _es_seguimiento(pregunta):
-        q = _contextualizar(pregunta, historial)
+    # memoria conversacional: pregunta autonoma para buscar y para el prompt
+    q = interpretar(pregunta, memoria)
 
     generales = _buscar(q, carrera) if modo in ("general", "ambos") else []
     del_curso = _buscar(q, carrera, curso) if modo in ("curso", "ambos") else []
@@ -264,4 +287,5 @@ def responder(pregunta, carrera, curso=None, historial=None, modo=None):
         usados = del_curso or generales
         r = _empaquetar(llm.generar(_prompt(q, usados)), usados)
     r["modo"] = modo
+    r["pregunta_interpretada"] = q
     return r

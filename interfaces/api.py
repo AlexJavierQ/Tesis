@@ -34,7 +34,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from nucleo import (rag, ingest, vectorstore, pdfreader, metricas, auth, bd,
-                    historial, parametros)
+                    historial, parametros, memoria)
 
 app = FastAPI(title="API Asistente de Practicum", version="5.0")
 
@@ -396,14 +396,14 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
     if c.modo == "curso" and not c.curso:
         raise HTTPException(400, "Para responder desde un curso, elige el curso.")
 
-    # memoria conversacional: si hay sesion y conversacion propia, recuperar
-    # los mensajes previos para resolver seguimientos ("y como las distribuyo")
+    # memoria conversacional: si hay sesion y conversacion propia, se arma el
+    # contexto (ventana reciente + resumen) para entender los seguimientos
     usuario = _sesion(authorization)
     es_suya = (usuario and c.conversacion_id
                and historial.es_dueno(c.conversacion_id, usuario["usuario"]))
-    mensajes_previos = historial.mensajes_de(c.conversacion_id) if es_suya else None
+    contexto = memoria.preparar(c.conversacion_id) if es_suya else None
 
-    r = rag.responder(c.pregunta, c.carrera, c.curso, mensajes_previos, c.modo)
+    r = rag.responder(c.pregunta, c.carrera, c.curso, contexto, c.modo)
     metricas.registrar(c.pregunta, r["con_respaldo"], c.carrera,
                        c.curso if r["modo"] != "general" else None, r["modo"],
                        usuario["usuario"] if usuario else None)
@@ -419,6 +419,8 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
         "respuesta": r["respuesta"],
         "con_respaldo": r["con_respaldo"],
         "modo": r["modo"],
+        # como entendio el sistema la pregunta (distinta si la memoria la reescribio)
+        "pregunta_interpretada": r["pregunta_interpretada"],
         "citas": citas,
     }
 

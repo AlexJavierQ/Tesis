@@ -80,6 +80,8 @@ export default function Chat({ carrera }) {
       const r = await api.preguntar(q, carrera, usaCurso ? curso : null, modo, convId);
       setHistorial(h => [...h, {
         rol: "bot", texto: r.respuesta, citas: r.citas, conRespaldo: r.con_respaldo,
+        // si la memoria reescribio la pregunta, se muestra como se entendio
+        interpretada: r.pregunta_interpretada !== q ? r.pregunta_interpretada : null,
       }]);
       recargarConversaciones();
     } catch (err) {
@@ -143,6 +145,9 @@ export default function Chat({ carrera }) {
           )}
           {historial.map((m, i) => (
             <div key={i} className={"msg msg-" + m.rol + (m.error ? " error" : "")}>
+              {m.interpretada && (
+                <p className="interpretada">Entendí tu pregunta como: “{m.interpretada}”</p>
+              )}
               <p>{m.texto}</p>
               {m.citas?.length > 0 && (
                 <div className="citas">

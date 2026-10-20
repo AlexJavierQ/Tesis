@@ -54,7 +54,12 @@ export default function Configuracion({ avisar, fallar }) {
                   {p.tipo !== "texto" && <small>Rango: {p.minimo} – {p.maximo}</small>}
                 </td>
                 <td>
-                  {p.tipo === "texto"
+                  {p.opciones?.length > 0
+                    ? <select value={borrador[p.clave] ?? ""}
+                              onChange={(e) => setBorrador({ ...borrador, [p.clave]: e.target.value })}>
+                        {p.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    : p.tipo === "texto"
                     ? <textarea rows={3} value={borrador[p.clave] ?? ""}
                                 onChange={(e) => setBorrador({ ...borrador, [p.clave]: e.target.value })} />
                     : <input type="number" value={borrador[p.clave] ?? ""}

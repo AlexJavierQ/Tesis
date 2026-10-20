@@ -76,12 +76,17 @@ El administrador es el único rol que puede no tener carreras.
 
 | Tabla | Columnas | Relación |
 |---|---|---|
-| `conversaciones` | id, usuario_id, titulo, iniciada_en | 1 usuario → N conversaciones |
+| `conversaciones` | id, usuario_id, titulo, iniciada_en, resumen, resumen_hasta | 1 usuario → N conversaciones |
 | `mensajes` | id, conversacion_id, rol (user/bot), texto, citas (JSON), creado_en | 1 conversación → N mensajes |
 
-La **memoria conversacional** usa estos mensajes: si la pregunta es un
-seguimiento ("¿y cómo las distribuyo?"), se combina con la pregunta anterior
-del usuario antes de buscar.
+La **memoria conversacional** (`nucleo/memoria.py`) usa estas tablas:
+- los últimos `memoria_ventana` mensajes se envían completos;
+- los anteriores se condensan en `conversaciones.resumen`, y `resumen_hasta`
+  guarda el id del último mensaje incluido, para resumir solo lo nuevo;
+- con eso, el modelo reescribe la pregunta para que se entienda sola antes de buscar.
+
+La memoria solo sirve para entender la pregunta: la respuesta sale únicamente
+de los documentos.
 
 ### Analítica y auditoría
 
@@ -124,10 +129,10 @@ La **API key** del modelo no es un parámetro: es un secreto y se queda en
 - **Transacciones**: cada operación corre dentro de `bd.transaccion()`; si algo
   falla se hace `ROLLBACK` y no queda nada a medias.
 - **Índices** sobre las claves foráneas más consultadas.
-- **Versión del esquema** en `PRAGMA user_version` (= 3). Una base de la
-  versión 1 se recrea; una de la versión 2 se migra sin perder datos (se agregan
-  las tablas y la columna nuevas, y a cada docente se le asignan los cursos de
-  su carrera para que conserve el acceso que ya tenía).
+- **Versión del esquema** en `PRAGMA user_version` (= 4). Una base de la
+  versión 1 se recrea; las versiones 2 y 3 se migran sin perder datos (se agregan
+  las tablas y columnas nuevas; al pasar de la 2 a la 3, a cada docente se le
+  asignan los cursos de su carrera para que conserve el acceso que ya tenía).
 
 ---
 

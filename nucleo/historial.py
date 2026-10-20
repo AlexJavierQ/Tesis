@@ -75,20 +75,36 @@ def mensajes_de(conversacion_id):
     """Lista los mensajes de una conversacion, en orden cronologico."""
     with bd.transaccion() as c:
         filas = c.execute("""
-            SELECT rol, texto, citas, creado_en
+            SELECT id, rol, texto, citas, creado_en
             FROM mensajes
             WHERE conversacion_id = ?
             ORDER BY id ASC
         """, (conversacion_id,)).fetchall()
     salida = []
-    for rol, texto, citas, ts in filas:
+    for mid, rol, texto, citas, ts in filas:
         salida.append({
+            "id": mid,
             "rol": rol,
             "texto": texto,
             "citas": json.loads(citas) if citas else [],
             "ts": ts,
         })
     return salida
+
+
+def resumen_de(conversacion_id):
+    """(resumen, id del ultimo mensaje incluido) de la memoria de una conversacion."""
+    with bd.transaccion() as c:
+        fila = c.execute("SELECT resumen, resumen_hasta FROM conversaciones WHERE id=?",
+                         (conversacion_id,)).fetchone()
+    return (fila[0] or "", fila[1]) if fila else ("", 0)
+
+
+def guardar_resumen(conversacion_id, resumen, hasta):
+    """Guarda el resumen actualizado y hasta que mensaje cubre."""
+    with bd.transaccion() as c:
+        c.execute("UPDATE conversaciones SET resumen=?, resumen_hasta=? WHERE id=?",
+                  (resumen, hasta, conversacion_id))
 
 
 def borrar_conversacion(conversacion_id):

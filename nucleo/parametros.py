@@ -36,6 +36,13 @@ DEFECTOS = {
         "Horas que dura una sesion antes de pedir login de nuevo."),
     "max_pdf_mb": ("25", "entero", 1, 100,
         "Tamano maximo de un PDF que se puede subir."),
+    "memoria_modo": ("resumen", "texto", None, None,
+        "Memoria conversacional. 'resumen': ventana reciente + resumen de lo "
+        "anterior + reescritura de la pregunta con el modelo. 'concatenacion': "
+        "solo pega la pregunta anterior si la actual parece un seguimiento "
+        "(sin llamadas extra al modelo)."),
+    "memoria_ventana": ("6", "entero", 2, 20,
+        "Cuantos mensajes recientes se envian completos; los anteriores se resumen."),
     "mensaje_abstencion": (
         "No tengo informacion oficial sobre eso. Te recomiendo consultar con la coordinacion.",
         "texto", None, None,
@@ -47,6 +54,11 @@ DEFECTOS = {
         "prerrequisitos. Si algo no esta en los documentos, te derivo a la coordinacion.",
         "texto", None, None,
         "Respuesta a saludos y a pedidos de ayuda (\"hola\", \"que puedes hacer\")."),
+}
+
+# parametros de texto que solo aceptan ciertos valores
+OPCIONES = {
+    "memoria_modo": ("resumen", "concatenacion"),
 }
 
 
@@ -83,7 +95,8 @@ def listar():
             ORDER BY p.clave""").fetchall()
     return [{"clave": f[0], "valor": f[1], "tipo": f[2], "minimo": f[3], "maximo": f[4],
              "descripcion": f[5], "actualizado_en": f[6], "actualizado_por": f[7],
-             "defecto": DEFECTOS.get(f[0], ("",))[0]}
+             "defecto": DEFECTOS.get(f[0], ("",))[0],
+             "opciones": list(OPCIONES.get(f[0], []))}
             for f in filas]
 
 
@@ -102,6 +115,8 @@ def actualizar(clave, valor, usuario):
         if tipo == "texto":
             if not texto:
                 raise ValueError("El valor no puede estar vacio.")
+            if clave in OPCIONES and texto not in OPCIONES[clave]:
+                raise ValueError(f"Debe ser uno de: {', '.join(OPCIONES[clave])}.")
         else:
             try:
                 numero = _convertir(texto, tipo)

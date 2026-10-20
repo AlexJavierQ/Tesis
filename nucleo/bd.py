@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 3.
+MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 4.
 
 Es la FUENTE DE VERDAD del sistema. Todas las tablas viven en un solo archivo
 (datos/sistema.db) y se relacionan por claves foraneas (FK). Los vectores del
@@ -26,7 +26,8 @@ Tablas (15):
     parametros(clave, valor, tipo, minimo, maximo, descripcion,
                actualizado_por -> usuarios, actualizado_en)
   CHAT
-    conversaciones(id, usuario_id -> usuarios, titulo, iniciada_en)
+    conversaciones(id, usuario_id -> usuarios, titulo, iniciada_en,
+                   resumen, resumen_hasta)   <- memoria conversacional
     mensajes(id, conversacion_id -> conversaciones, rol, texto, citas, creado_en)
   ANALITICA Y AUDITORIA
     consultas(id, carrera_id, curso_id, usuario_id, modo, pregunta, respondida, creado_en)
@@ -49,7 +50,7 @@ DB = os.path.join(os.path.dirname(BASE), "datos", "sistema.db")
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
 CONSULTAS_VIEJA = os.path.join(os.path.dirname(BASE), "datos", "consultas.db")
 
-VERSION_ESQUEMA = 3
+VERSION_ESQUEMA = 4
 ROLES = ("estudiante", "docente", "coordinacion", "administrador")
 FACULTAD_POR_DEFECTO = "Ingenierías y Arquitectura"
 CARRERA_POR_DEFECTO = "computacion"
@@ -172,11 +173,16 @@ def _crear_tablas(c):
     )""")
 
     # --- chat ---
+    # resumen / resumen_hasta: memoria conversacional. Los mensajes antiguos
+    # (los que ya no entran en la ventana reciente) se condensan en `resumen`;
+    # `resumen_hasta` es el id del ultimo mensaje incluido en el.
     c.execute(f"""CREATE TABLE IF NOT EXISTS conversaciones (
-        id          INTEGER PRIMARY KEY,
-        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-        titulo      TEXT NOT NULL,
-        {_fecha("iniciada_en")}
+        id             INTEGER PRIMARY KEY,
+        usuario_id     INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        titulo         TEXT NOT NULL,
+        {_fecha("iniciada_en")},
+        resumen        TEXT,
+        resumen_hasta  INTEGER NOT NULL DEFAULT 0
     )""")
     c.execute(f"""CREATE TABLE IF NOT EXISTS mensajes (
         id               INTEGER PRIMARY KEY,
@@ -242,6 +248,7 @@ def _migrar_si_hace_falta(c):
       v1 -> se recrea entera (era otro modelo y solo tenia datos demo).
       v2 -> v3: cambios aditivos. Las tablas nuevas las crea _crear_tablas;
                aqui solo se agrega la columna nueva. No se pierde nada.
+      v3 -> v4: columnas del resumen de la memoria conversacional.
     """
     version = c.execute("PRAGMA user_version").fetchone()[0]
     tablas = [f[0] for f in c.execute(
@@ -252,9 +259,14 @@ def _migrar_si_hace_falta(c):
         for t in tablas:
             c.execute(f'DROP TABLE IF EXISTS "{t}"')
         c.execute("PRAGMA foreign_keys = ON")
-    elif version == 2:
+        return
+    if version == 2:
         print("[bd] Migrando sistema.db de v2 a v3.")
         c.execute("ALTER TABLE documento_versiones ADD COLUMN restaurada_de INTEGER")
+    if version in (2, 3):
+        print("[bd] Migrando sistema.db a v4 (memoria conversacional).")
+        c.execute("ALTER TABLE conversaciones ADD COLUMN resumen TEXT")
+        c.execute("ALTER TABLE conversaciones ADD COLUMN resumen_hasta INTEGER NOT NULL DEFAULT 0")
 
 
 def _seed(c):

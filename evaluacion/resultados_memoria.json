@@ -1,0 +1,1802 @@
+[
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 1,
+  "pregunta": "¿Cuántas horas de prácticas necesito en total?",
+  "interpretada": "¿Cuántas horas de prácticas necesito en total?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "240 horas en total. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1276,
+    "tokens_salida": 615,
+    "segundos": 1.557,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1276,
+  "tokens_salida": 615,
+  "segundos": 6.974,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 2,
+  "pregunta": "¿Y cuántas corresponden al Prácticum 2?",
+  "interpretada": "¿Cuántas horas de prácticas necesito en total? ¿Y cuántas corresponden al Prácticum 2?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: 240 horas en total, con 120 horas asignadas al Practicum 2. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)  \nEn Practicum 2: 144 horas. (Fuente: Capacitacion_Entorno_Laboral.pdf, pag. 3)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1396,
+    "tokens_salida": 527,
+    "segundos": 1.339,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1396,
+  "tokens_salida": 527,
+  "segundos": 1.406,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 3,
+  "pregunta": "Ya llevo 60 horas en una empresa de software.",
+  "interpretada": "Ya llevo 60 horas en una empresa de software.",
+  "con_respaldo": true,
+  "acierto": null,
+  "respuesta": "En general: Practicum 2 requiere 120 horas en total.  \nEn Practicum 2: La práctica laboral (Practicum 2 – Rediseño) requiere 144 horas.  \n\n(Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitacion_Entorno_Laboral.pdf, pag. 3)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 827,
+    "tokens_salida": 1062,
+    "segundos": 2.023,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 827,
+  "tokens_salida": 1062,
+  "segundos": 2.083,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 4,
+  "pregunta": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: El informe final de cada práctica se entrega en un plazo máximo de 8 días calendario después de finalizar la práctica, a través del entorno virtual. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1497,
+    "tokens_salida": 392,
+    "segundos": 1.22,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1497,
+  "tokens_salida": 392,
+  "segundos": 1.279,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 5,
+  "pregunta": "¿Qué formato uso para eso?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe cuando termine? ¿Qué formato uso para eso?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El informe final se entrega en un plazo máximo de 8 días calendario después de finalizar la práctica, y se debe usar el formato F‑02. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1567,
+    "tokens_salida": 409,
+    "segundos": 1.206,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1567,
+  "tokens_salida": 409,
+  "segundos": 1.265,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 6,
+  "pregunta": "¿Y quién lo evalúa?",
+  "interpretada": "¿Qué formato uso para eso? ¿Y quién lo evalúa?",
+  "con_respaldo": false,
+  "acierto": false,
+  "respuesta": "No tengo informacion oficial sobre eso. Te recomiendo consultar con la coordinacion.",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 206,
+    "tokens_salida": 160,
+    "segundos": 0.886,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 206,
+  "tokens_salida": 160,
+  "segundos": 0.944,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 7,
+  "pregunta": "¿Qué nota necesito para aprobar?",
+  "interpretada": "¿Qué nota necesito para aprobar?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "La nota mínima para aprobar el Practicum es 7 sobre 10. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1034,
+    "tokens_salida": 353,
+    "segundos": 1.198,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1034,
+  "tokens_salida": 353,
+  "segundos": 1.253,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 1,
+  "pregunta": "¿Qué es un practicante preprofesional?",
+  "interpretada": "¿Qué es un practicante preprofesional?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El practicante preprofesional es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una Empresa/Institución sin recibir una remuneración como contrapartida. No implica afiliación al IESS y se rige por el Reglamento de Régimen ",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1593,
+    "tokens_salida": 312,
+    "segundos": 1.166,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1593,
+  "tokens_salida": 312,
+  "segundos": 1.224,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 2,
+  "pregunta": "¿Y en qué se diferencia de un pasante?",
+  "interpretada": "¿Qué es un practicante preprofesional? ¿Y en qué se diferencia de un pasante?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "En Practicum 2: Un **practicante preprofesional** es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una empresa o institución sin recibir remuneración; no implica afiliación al IESS y se rige por el Reglamento de Régimen A",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1604,
+    "tokens_salida": 477,
+    "segundos": 1.304,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1604,
+  "tokens_salida": 477,
+  "segundos": 1.356,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 3,
+  "pregunta": "¿Cuáles son las funciones del tutor externo?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2: El tutor externo debe coordinar con el tutor académico las actividades a desarrollar en la entidad, tutelar el trabajo que ejecutará el estudiante, evaluar su desempeño, verificar la asistencia, asignar la calificación y emitir el informe de cumplimiento, y comunicar oportunamente al",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1486,
+    "tokens_salida": 393,
+    "segundos": 1.327,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1486,
+  "tokens_salida": 393,
+  "segundos": 1.382,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 4,
+  "pregunta": "¿Y las del tutor académico?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo? ¿Y las del tutor académico?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: El tutor académico aprueba el plan de prácticas, evalúa el informe final y realiza reuniones de seguimiento cada dos semanas. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)  \n\nEn Practicum 2: El tutor externo coordina con el tutor académico las actividades a desarrollar, tutela el trabajo",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1485,
+    "tokens_salida": 1438,
+    "segundos": 2.507,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1485,
+  "tokens_salida": 1438,
+  "segundos": 2.567,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 5,
+  "pregunta": "Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "interpretada": "¿Y las del tutor académico? Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "We need to answer: \"¿Y las del tutor académico? Volviendo a lo primero, ¿esa figura recibe algún pago?\" The user asks about the tutor academic: does that figure receive any payment? We need to use only the provided context. Let's search for mention of tutor academic payment. In the context, we have:",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1431,
+    "tokens_salida": 2048,
+    "segundos": 3.008,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1431,
+  "tokens_salida": 2048,
+  "segundos": 3.069,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 6,
+  "pregunta": "¿Hasta cuándo puedo postular a una plaza?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "Puedes postular hasta el 28 de abril. (Fuente: Capacitacion_Entorno_Laboral.pdf, pag. 23)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 474,
+    "tokens_salida": 250,
+    "segundos": 0.917,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 474,
+  "tokens_salida": 250,
+  "segundos": 0.975,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 7,
+  "pregunta": "¿Y quién tiene que validar esa postulación?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza? ¿Y quién tiene que validar esa postulación?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "Hasta el 28 de abril. La postulación debe ser validada por el docente. (Fuente: Capacitacion_Entorno_Laboral.pdf, pag. 23, 20)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1229,
+    "tokens_salida": 1092,
+    "segundos": 2.031,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1229,
+  "tokens_salida": 1092,
+  "segundos": 2.093,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 1,
+  "pregunta": "¿Cuántas horas de prácticas necesito en total?",
+  "interpretada": "¿Cuántas horas de prácticas necesito en total?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "240 horas en total. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1276,
+    "tokens_salida": 631,
+    "segundos": 9.579,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1276,
+  "tokens_salida": 631,
+  "segundos": 9.635,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 2,
+  "pregunta": "¿Y cuántas corresponden al Prácticum 2?",
+  "interpretada": "¿Cuántas horas corresponden al Prácticum 2?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "120 horas (Fuente: archivo, pag. 1).",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 448,
+    "tokens_salida": 73,
+    "segundos": 0.638,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 573,
+    "tokens_salida": 145,
+    "segundos": 0.943,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 1021,
+  "tokens_salida": 218,
+  "segundos": 1.636,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 3,
+  "pregunta": "Ya llevo 60 horas en una empresa de software.",
+  "interpretada": "Ya llevo 60 horas en una empresa de software.",
+  "con_respaldo": true,
+  "acierto": null,
+  "respuesta": "En general: Las prácticas preprofesionales requieren 120 horas en total para Practicum 2.  \nEn Practicum 2: El Entorno Laboral (Prácticum 2 – Rediseño) requiere 144 horas.  \n\n(Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitacion_Entorno_Laboral.pdf, pag. 3)",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 478,
+    "tokens_salida": 47,
+    "segundos": 0.801,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 827,
+    "tokens_salida": 761,
+    "segundos": 1.435,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 1305,
+  "tokens_salida": 808,
+  "segundos": 2.298,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 4,
+  "pregunta": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe de Practicum 2 cuando termine?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El informe final de cada práctica se entrega en un plazo máximo de 8 días calendario después de finalizar la práctica, a través del entorno virtual. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 575,
+    "tokens_salida": 78,
+    "segundos": 0.799,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1472,
+    "tokens_salida": 618,
+    "segundos": 1.401,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 2047,
+  "tokens_salida": 696,
+  "segundos": 2.264,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 5,
+  "pregunta": "¿Qué formato uso para eso?",
+  "interpretada": "¿Qué formato uso para el informe final?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El informe final debe presentarse en formato **F‑02**. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 246,
+    "tokens_salida": 133,
+    "segundos": 0.621,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 676,
+    "tokens_salida": 51,
+    "segundos": 0.81,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1180,
+    "tokens_salida": 398,
+    "segundos": 1.127,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 2102,
+  "tokens_salida": 582,
+  "segundos": 2.626,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 6,
+  "pregunta": "¿Y quién lo evalúa?",
+  "interpretada": "¿Quién evalúa el informe final?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El docente tutor. (Fuente: Reglamento_de_Practicum.pdf, pag. 6)",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 323,
+    "tokens_salida": 186,
+    "segundos": 0.755,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 684,
+    "tokens_salida": 47,
+    "segundos": 0.58,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 832,
+    "tokens_salida": 208,
+    "segundos": 0.929,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 1839,
+  "tokens_salida": 441,
+  "segundos": 2.329,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 1,
+  "turno": 7,
+  "pregunta": "¿Qué nota necesito para aprobar?",
+  "interpretada": "¿Qué nota necesito para aprobar?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: La nota mínima para aprobar el Practicum es 7 sobre 10. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 385,
+    "tokens_salida": 344,
+    "segundos": 0.916,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 685,
+    "tokens_salida": 43,
+    "segundos": 0.58,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1034,
+    "tokens_salida": 249,
+    "segundos": 0.848,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 2104,
+  "tokens_salida": 636,
+  "segundos": 2.409,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 1,
+  "pregunta": "¿Qué es un practicante preprofesional?",
+  "interpretada": "¿Qué es un practicante preprofesional?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2: El practicante preprofesional es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una empresa o institución, sin recibir remuneración como contrapartida. No implica afiliación al IESS y se rige por el Reglame",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1593,
+    "tokens_salida": 365,
+    "segundos": 1.497,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1593,
+  "tokens_salida": 365,
+  "segundos": 1.553,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 2,
+  "pregunta": "¿Y en qué se diferencia de un pasante?",
+  "interpretada": "¿En qué se diferencia un practicante preprofesional de un pasante?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2: Un **practicante preprofesional** es el estudiante que realiza su práctica preprofesional con fines educativos en una empresa o institución, sin recibir remuneración y sin afiliación al IESS, regido por el Reglamento de Régimen Académico. Un **pasante** es el estudiante que realiza u",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 514,
+    "tokens_salida": 74,
+    "segundos": 0.777,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1599,
+    "tokens_salida": 765,
+    "segundos": 1.572,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 2113,
+  "tokens_salida": 839,
+  "segundos": 2.41,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 3,
+  "pregunta": "¿Cuáles son las funciones del tutor externo?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El tutor externo coordina con el tutor académico las actividades a desarrollar en la entidad, tutela el trabajo del estudiante, evalúa su desempeño, verifica la asistencia, asigna la calificación y emite el informe de cumplimiento. Además, comunica oportunamente al tutor académico cualquier eventual",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 628,
+    "tokens_salida": 58,
+    "segundos": 0.705,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1486,
+    "tokens_salida": 803,
+    "segundos": 1.493,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 2114,
+  "tokens_salida": 861,
+  "segundos": 2.262,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 4,
+  "pregunta": "¿Y las del tutor académico?",
+  "interpretada": "¿Cuáles son las funciones del tutor académico?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2: El tutor académico es el docente asignado a la asignatura y está a cargo de la planificación, seguimiento y evaluación de la práctica; orienta, acompaña y retroalimenta al estudiante en los procesos de inserción, diagnóstico, planificación, ejecución, evaluación y sistematización; su",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 723,
+    "tokens_salida": 52,
+    "segundos": 1.602,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1524,
+    "tokens_salida": 987,
+    "segundos": 1.738,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 2247,
+  "tokens_salida": 1039,
+  "segundos": 3.402,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 5,
+  "pregunta": "Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "interpretada": "¿El practicante preprofesional recibe algún pago?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: El practicante preprofesional no recibe remuneración como contrapartida.  \nEn Practicum 2: El practicante es el estudiante que realiza su práctica preprofesional con fines educativos sin recibir una remuneración como contrapartida. (Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitaci",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 315,
+    "tokens_salida": 139,
+    "segundos": 0.886,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 828,
+    "tokens_salida": 54,
+    "segundos": 1.031,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1593,
+    "tokens_salida": 688,
+    "segundos": 1.538,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 2736,
+  "tokens_salida": 881,
+  "segundos": 3.522,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 6,
+  "pregunta": "¿Hasta cuándo puedo postular a una plaza?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "Puedes postular hasta el 28 de abril. (Fuente: archivo, pag. 23)",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 431,
+    "tokens_salida": 258,
+    "segundos": 0.931,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 833,
+    "tokens_salida": 68,
+    "segundos": 0.63,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 474,
+    "tokens_salida": 167,
+    "segundos": 0.97,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 1738,
+  "tokens_salida": 493,
+  "segundos": 2.598,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 1,
+  "turno": 7,
+  "pregunta": "¿Y quién tiene que validar esa postulación?",
+  "interpretada": "¿Quién debe validar la postulación?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El docente debe validar la postulación. (Fuente: Capacitacion_Entorno_Laboral.pdf, pag. 20)",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 435,
+    "tokens_salida": 229,
+    "segundos": 0.801,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 843,
+    "tokens_salida": 50,
+    "segundos": 0.716,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1003,
+    "tokens_salida": 239,
+    "segundos": 0.823,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 2281,
+  "tokens_salida": 518,
+  "segundos": 2.406,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 1,
+  "pregunta": "¿Cuántas horas de prácticas necesito en total?",
+  "interpretada": "¿Cuántas horas de prácticas necesito en total?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: Las prácticas preprofesionales requieren 240 horas en total, distribuidas en dos niveles: Practicum 1 (120 horas) y Practicum 2 (120 horas).  \nEn Practicum 2: El Practicum 2 – Rediseño requiere 144 horas. (Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitacion_Entorno_Laboral.pdf, pag",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1276,
+    "tokens_salida": 860,
+    "segundos": 1.511,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1276,
+  "tokens_salida": 860,
+  "segundos": 1.567,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 2,
+  "pregunta": "¿Y cuántas corresponden al Prácticum 2?",
+  "interpretada": "¿Cuántas horas de prácticas necesito en total? ¿Y cuántas corresponden al Prácticum 2?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: 240 horas en total, 120 horas en Practicum 1 y 120 horas en Practicum 2.  \nEn Practicum 2: 144 horas según el material del curso.  \n\n(Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitacion_Entorno_Laboral.pdf, pag. 3)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1396,
+    "tokens_salida": 951,
+    "segundos": 1.795,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1396,
+  "tokens_salida": 951,
+  "segundos": 1.856,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 3,
+  "pregunta": "Ya llevo 60 horas en una empresa de software.",
+  "interpretada": "Ya llevo 60 horas en una empresa de software.",
+  "con_respaldo": true,
+  "acierto": null,
+  "respuesta": "En general: Las prácticas preprofesionales requieren 240 horas en total, distribuidas en dos niveles de 120 horas cada uno; para iniciar Practicum 2 el estudiante debe haber aprobado Practicum 1 y debe completar 120 horas en el nivel 2 (Reglamento_de_Practicum.pdf, pag. 1).  \nEn Practicum 2: Se trat",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 827,
+    "tokens_salida": 422,
+    "segundos": 1.313,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 827,
+  "tokens_salida": 422,
+  "segundos": 1.37,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 4,
+  "pregunta": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El informe final debe entregarse en un plazo máximo de 8 días calendario después de finalizar la práctica. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1497,
+    "tokens_salida": 395,
+    "segundos": 1.123,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1497,
+  "tokens_salida": 395,
+  "segundos": 1.178,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 5,
+  "pregunta": "¿Qué formato uso para eso?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe cuando termine? ¿Qué formato uso para eso?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El plazo es máximo 8 días calendario después de finalizar la práctica. Se debe usar el formato F‑02 para el informe final. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1567,
+    "tokens_salida": 440,
+    "segundos": 1.535,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1567,
+  "tokens_salida": 440,
+  "segundos": 1.592,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 6,
+  "pregunta": "¿Y quién lo evalúa?",
+  "interpretada": "¿Qué formato uso para eso? ¿Y quién lo evalúa?",
+  "con_respaldo": false,
+  "acierto": false,
+  "respuesta": "No tengo informacion oficial sobre eso. Te recomiendo consultar con la coordinacion.",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 206,
+    "tokens_salida": 232,
+    "segundos": 0.959,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 206,
+  "tokens_salida": 232,
+  "segundos": 1.018,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 7,
+  "pregunta": "¿Qué nota necesito para aprobar?",
+  "interpretada": "¿Qué nota necesito para aprobar?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: La nota mínima para aprobar el Practicum es 7 sobre 10. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1034,
+    "tokens_salida": 188,
+    "segundos": 0.779,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1034,
+  "tokens_salida": 188,
+  "segundos": 0.839,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 1,
+  "pregunta": "¿Qué es un practicante preprofesional?",
+  "interpretada": "¿Qué es un practicante preprofesional?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El practicante preprofesional es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una Empresa/Institución sin recibir una remuneración como contrapartida. No implica afiliación al IESS y se rige por el Reglamento de Régimen ",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1593,
+    "tokens_salida": 291,
+    "segundos": 0.967,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1593,
+  "tokens_salida": 291,
+  "segundos": 1.022,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 2,
+  "pregunta": "¿Y en qué se diferencia de un pasante?",
+  "interpretada": "¿Qué es un practicante preprofesional? ¿Y en qué se diferencia de un pasante?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "El practicante preprofesional es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una Empresa/Institución sin recibir una remuneración como contrapartida. No implica afiliación al IESS y se rige por el Reglamento de Régimen ",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1604,
+    "tokens_salida": 688,
+    "segundos": 1.884,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1604,
+  "tokens_salida": 688,
+  "segundos": 1.942,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 3,
+  "pregunta": "¿Cuáles son las funciones del tutor externo?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2: El tutor externo coordina con el tutor académico las actividades a desarrollar en la entidad, tutela el trabajo del estudiante, evalúa su desempeño, verifica la asistencia, asigna la calificación y emite el informe de cumplimiento, y comunica oportunamente al tutor académico cualquie",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1486,
+    "tokens_salida": 458,
+    "segundos": 1.57,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1486,
+  "tokens_salida": 458,
+  "segundos": 1.626,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 4,
+  "pregunta": "¿Y las del tutor académico?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo? ¿Y las del tutor académico?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2:  \n**Tutor externo**: coordina con el tutor académico las actividades a desarrollar en la entidad según la planificación; tutela el trabajo del estudiante; evalúa el desempeño, verifica la asistencia, asigna la calificación y emite el informe de cumplimiento; comunica oportunamente al",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1485,
+    "tokens_salida": 983,
+    "segundos": 1.935,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1485,
+  "tokens_salida": 983,
+  "segundos": 1.992,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 5,
+  "pregunta": "Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "interpretada": "¿Y las del tutor académico? Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "con_respaldo": false,
+  "acierto": false,
+  "respuesta": "No tengo informacion oficial sobre eso. Te recomiendo consultar con la coordinacion.",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1431,
+    "tokens_salida": 251,
+    "segundos": 0.974,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1431,
+  "tokens_salida": 251,
+  "segundos": 1.033,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 6,
+  "pregunta": "¿Hasta cuándo puedo postular a una plaza?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "Puedes postular hasta el 28 de abril. (Fuente: Capacitacion_Entorno_Laboral.pdf, pag. 23)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 474,
+    "tokens_salida": 244,
+    "segundos": 0.834,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 474,
+  "tokens_salida": 244,
+  "segundos": 0.891,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "concatenacion",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 7,
+  "pregunta": "¿Y quién tiene que validar esa postulación?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza? ¿Y quién tiene que validar esa postulación?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En Practicum 2: Puedes postular a una plaza hasta el **28 de abril**. La postulación debe ser **validada por el docente**. (Fuente: Capacitacion_Entorno_Laboral.pdf, pag. 23)",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1229,
+    "tokens_salida": 317,
+    "segundos": 1.279,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1229,
+  "tokens_salida": 317,
+  "segundos": 1.386,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 1,
+  "pregunta": "¿Cuántas horas de prácticas necesito en total?",
+  "interpretada": "¿Cuántas horas de prácticas necesito en total?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "En general: Las prácticas preprofesionales requieren 240 horas en total, distribuidas en dos niveles de 120 horas cada uno.  \nEn Practicum 2: La práctica de Entorno Laboral (Prácticum 2 – Rediseño) tiene una duración de 144 horas.  \n\n(Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitacion_Entorno",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1276,
+    "tokens_salida": 605,
+    "segundos": 1.531,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 1276,
+  "tokens_salida": 605,
+  "segundos": 1.584,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 2,
+  "pregunta": "¿Y cuántas corresponden al Prácticum 2?",
+  "interpretada": "¿Cuántas horas corresponden al Prácticum 2?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "120 horas. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 518,
+    "tokens_salida": 59,
+    "segundos": 0.533,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 573,
+    "tokens_salida": 142,
+    "segundos": 0.854,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 1091,
+  "tokens_salida": 201,
+  "segundos": 1.445,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 3,
+  "pregunta": "Ya llevo 60 horas en una empresa de software.",
+  "interpretada": "Ya llevo 60 horas en una empresa de software.",
+  "con_respaldo": true,
+  "acierto": null,
+  "respuesta": "En general: Las prácticas preprofesionales requieren 120 horas en Practicum 2.  \nEn Practicum 2: Se requiere 144 horas dentro de una empresa/institución.  \n(Fuente: Reglamento_de_Practicum.pdf, pag. 1; Capacitacion_Entorno_Laboral.pdf, pag. 3)",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 554,
+    "tokens_salida": 47,
+    "segundos": 0.556,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 827,
+    "tokens_salida": 586,
+    "segundos": 1.386,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 1381,
+  "tokens_salida": 633,
+  "segundos": 1.998,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 4,
+  "pregunta": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe cuando termine?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "El plazo máximo para entregar el informe final es de 8 días calendario después de finalizar la práctica. (Fuente: Reglamento_de_Practicum.pdf, pag. 1)",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 641,
+    "tokens_salida": 66,
+    "segundos": 0.576,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 1497,
+    "tokens_salida": 603,
+    "segundos": 1.429,
+    "espera_limite": 0.0,
+    "ok": true
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 2138,
+  "tokens_salida": 669,
+  "segundos": 2.064,
+  "espera_limite": 0.0,
+  "fallos_llm": 0
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 5,
+  "pregunta": "¿Qué formato uso para eso?",
+  "interpretada": "¿Cuál es el plazo para entregar el informe cuando termine? ¿Qué formato uso para eso?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "(Segun los documentos oficiales:)\n\n-  Se asigna un convenio ficticio y se genera un oficio de asignación temporal para que se pueda realizar la generación de documento de aceptación , el oficio asignación temporal se reemplaza cuando el convenio este formalizado. \"Devuelta\" Cuando hay datos incorrec",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 316,
+    "tokens_salida": 153,
+    "segundos": 0.811,
+    "espera_limite": 10.663,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.474,
+    "espera_limite": 20.869,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.437,
+    "espera_limite": 20.976,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 316,
+  "tokens_salida": 153,
+  "segundos": 1.789,
+  "espera_limite": 52.508,
+  "fallos_llm": 2
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 6,
+  "pregunta": "¿Y quién lo evalúa?",
+  "interpretada": "¿Qué formato uso para eso? ¿Y quién lo evalúa?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- FR 12 Autorizar postulación (Capacitacion_Entorno_Laboral.pdf, pag. 12)",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.432,
+    "espera_limite": 13.267,
+    "ok": false
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.501,
+    "espera_limite": 20.95,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.471,
+    "espera_limite": 20.96,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 1.468,
+  "espera_limite": 55.177,
+  "fallos_llm": 3
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Horas y entrega del informe",
+  "repeticion": 2,
+  "turno": 7,
+  "pregunta": "¿Qué nota necesito para aprobar?",
+  "interpretada": "¿Qué nota necesito para aprobar?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- FR Agregue un pie de página 20 Estados de proponer plaza (convenio) Estado de la propuesta (convenio) “Registrada” El estudiante ha registrado una postulación, y la misma tendrá que ser validada por el docente. “Tramitar Convenio” El equipo de relacionamiento de ",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 426,
+    "tokens_salida": 161,
+    "segundos": 0.867,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.475,
+    "espera_limite": 20.883,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.476,
+    "espera_limite": 20.931,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 426,
+  "tokens_salida": 161,
+  "segundos": 1.884,
+  "espera_limite": 41.814,
+  "fallos_llm": 2
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 1,
+  "pregunta": "¿Qué es un practicante preprofesional?",
+  "interpretada": "¿Qué es un practicante preprofesional?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- ¿Quién es el practicante preprofesional? • El practicante es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una Empresa/Institución sin recibir una remuneración como contrapartida. No i",
+  "llamadas": [
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.486,
+    "espera_limite": 20.995,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 1,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 0.544,
+  "espera_limite": 20.995,
+  "fallos_llm": 1
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 2,
+  "pregunta": "¿Y en qué se diferencia de un pasante?",
+  "interpretada": "¿Qué es un practicante preprofesional? ¿Y en qué se diferencia de un pasante?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- ¿Quién es el practicante preprofesional? • El practicante es el estudiante que realiza su práctica preprofesional con fines educativos como parte de su proceso de formación académica en una Empresa/Institución sin recibir una remuneración como contrapartida. No i",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.478,
+    "espera_limite": 20.991,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.761,
+    "espera_limite": 21.089,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 1.3,
+  "espera_limite": 42.08,
+  "fallos_llm": 2
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 3,
+  "pregunta": "¿Cuáles son las funciones del tutor externo?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- FR 7 Actores que intervienen en la ejecución y cumplimiento de las prácticas preprofesionales Tutor Externo a.Coordinar con el tutor académico las actividades por desarrollar en la entidad considerando la planificación de la práctica. b.Tutelar el trabajo que eje",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.531,
+    "espera_limite": 21.551,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.49,
+    "espera_limite": 21.233,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 1.077,
+  "espera_limite": 42.784,
+  "fallos_llm": 2
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 4,
+  "pregunta": "¿Y las del tutor académico?",
+  "interpretada": "¿Cuáles son las funciones del tutor externo? ¿Y las del tutor académico?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- FR 7 Actores que intervienen en la ejecución y cumplimiento de las prácticas preprofesionales Tutor Externo a.Coordinar con el tutor académico las actividades por desarrollar en la entidad considerando la planificación de la práctica. b.Tutelar el trabajo que eje",
+  "llamadas": [
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.508,
+    "espera_limite": 20.941,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.467,
+    "espera_limite": 20.936,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 2,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 1.042,
+  "espera_limite": 41.877,
+  "fallos_llm": 2
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 5,
+  "pregunta": "Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "interpretada": "¿Y las del tutor académico? Volviendo a lo primero, ¿esa figura recibe algún pago?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- e es el estudiante que realiza su pasantía tanto en el sector público como privado, con algún tipo de compensación. Las pasantías se regularán por la normativa aplicable e incluirán la afiliación de los estudiantes al IESS; sin modificar el carácter y los efectos",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.475,
+    "espera_limite": 20.935,
+    "ok": false
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.473,
+    "espera_limite": 20.944,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.489,
+    "espera_limite": 20.983,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 1.509,
+  "espera_limite": 62.862,
+  "fallos_llm": 3
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 6,
+  "pregunta": "¿Hasta cuándo puedo postular a una plaza?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza?",
+  "con_respaldo": true,
+  "acierto": false,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- FR 11 Proponer Plaza (Capacitacion_Entorno_Laboral.pdf, pag. 11)\n\n- roponer Plaza\" Desde 8 de abril hasta el 2 de junio DGVS Seguimiento del desarrollo de PPP Desde 8 de abril – Permanente Docente - DGVS Generación de oficio de asignación Desde 8 de abril hasta e",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 420,
+    "tokens_salida": 196,
+    "segundos": 0.98,
+    "espera_limite": 0.0,
+    "ok": true
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.438,
+    "espera_limite": 20.929,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.443,
+    "espera_limite": 20.904,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 420,
+  "tokens_salida": 196,
+  "segundos": 1.929,
+  "espera_limite": 41.833,
+  "fallos_llm": 2
+ },
+ {
+  "modo": "resumen",
+  "conversacion": "Actores de la práctica (referencia lejana)",
+  "repeticion": 2,
+  "turno": 7,
+  "pregunta": "¿Y quién tiene que validar esa postulación?",
+  "interpretada": "¿Hasta cuándo puedo postular a una plaza? ¿Y quién tiene que validar esa postulación?",
+  "con_respaldo": true,
+  "acierto": true,
+  "respuesta": "(Segun los documentos oficiales:)\n\n- roponer Plaza\" Desde 8 de abril hasta el 2 de junio DGVS Seguimiento del desarrollo de PPP Desde 8 de abril – Permanente Docente - DGVS Generación de oficio de asignación Desde 8 de abril hasta el 12 de mayo Director Generación de documento de aceptación Hasta el",
+  "llamadas": [
+   {
+    "proposito": "resumen",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.656,
+    "espera_limite": 21.025,
+    "ok": false
+   },
+   {
+    "proposito": "reescritura",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.496,
+    "espera_limite": 20.954,
+    "ok": false
+   },
+   {
+    "proposito": "respuesta",
+    "tokens_entrada": 0,
+    "tokens_salida": 0,
+    "segundos": 0.502,
+    "espera_limite": 21.011,
+    "ok": false
+   }
+  ],
+  "n_llamadas": 3,
+  "tokens_entrada": 0,
+  "tokens_salida": 0,
+  "segundos": 1.744,
+  "espera_limite": 62.99,
+  "fallos_llm": 3
+ }
+]
