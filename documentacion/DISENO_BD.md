@@ -4,7 +4,7 @@ El sistema usa **dos almacenes**:
 
 | Almacén | Tecnología | Archivo | Qué guarda |
 |---|---|---|---|
-| Relacional | SQLite | `datos/sistema.db` | Toda la información del sistema (13 tablas) |
+| Relacional | SQLite | `datos/sistema.db` | Toda la información del sistema (15 tablas) |
 | Vectores | ChromaDB | `datos/chroma_db/` | Fragmentos de los PDF y sus embeddings |
 
 Los PDF se guardan como archivos en `datos/docs/<carrera>/global/` y
@@ -27,12 +27,13 @@ carreras, cursos, usuarios y documentos existen lo decide esta base.
 | `facultades` | id, nombre | 1 facultad → N carreras |
 | `carreras` | id, facultad_id, nombre | 1 carrera → N cursos |
 | `cursos` | id, carrera_id, nombre | único por (carrera, nombre) |
+| `curso_docente` | curso_id, usuario_id | **N:M**: la coordinación asigna qué docentes dictan cada curso |
 
 ### Usuarios y acceso
 
 | Tabla | Columnas | Nota |
 |---|---|---|
-| `roles` | id, nombre | estudiante, docente, coordinacion |
+| `roles` | id, nombre | estudiante, docente, coordinacion, administrador |
 | `usuarios` | id, usuario, nombre, correo, password, rol_id, activo, creado_en | correo único con formato validado; password = hash PBKDF2 |
 | `usuario_carrera` | usuario_id, carrera_id | **N:M**: un usuario puede tener muchas carreras |
 | `sesiones` | token, usuario_id, creado_en, expira_en | la sesión caduca a las 8 horas |
@@ -40,15 +41,30 @@ carreras, cursos, usuarios y documentos existen lo decide esta base.
 Un usuario **desactivado** (`activo = 0`) no puede iniciar sesión y sus
 sesiones abiertas se cierran; se conserva su historial.
 
+**Qué puede hacer cada rol** (la API lo valida en cada endpoint):
+
+| Rol | Gestiona | No puede |
+|---|---|---|
+| administrador | parámetros del sistema, todos los usuarios, bitácora | gestionar contenido académico |
+| coordinacion | facultades, carreras, cursos, asignación de docentes, reglamentos generales, estudiantes y docentes de sus carreras, métricas de la carrera | tocar la configuración, crear coordinadores o administradores |
+| docente | documentos y métricas de **sus cursos asignados** | crear cursos, subir reglamentos generales |
+| estudiante | el chat y su historial | — |
+
+El administrador es el único rol que puede no tener carreras.
+
 ### Documentos del RAG
 
 | Tabla | Columnas | Nota |
 |---|---|---|
 | `documentos` | id, carrera_id, curso_id, nombre, activo, creado_en | `curso_id` NULL = documento global de la carrera |
-| `documento_versiones` | id, documento_id, numero, ruta, fragmentos, subido_por, subido_en | una fila por cada vez que se sube el archivo |
+| `documento_versiones` | id, documento_id, numero, ruta, fragmentos, subido_por, subido_en, restaurada_de | una fila por cada vez que se sube el archivo |
 
 - Subir un PDF con un nombre que ya existe en ese ámbito crea la **versión
   siguiente**. La anterior se mueve a `_versiones/` y queda registrada.
+- **Restaurar** funciona como `git revert`: restaurar la v1 cuando la vigente
+  es la v3 crea una **v4** con el contenido de la v1 (`restaurada_de = 1`). No
+  se borra ni se reescribe ninguna versión, así el historial muestra quién
+  volvió atrás y cuándo.
 - Solo la versión vigente (la de número más alto) está indexada en ChromaDB.
 - **Desactivar** un documento quita sus fragmentos de ChromaDB (el chat deja
   de usarlo) sin borrar nada. **Activarlo** lo vuelve a indexar.
@@ -78,6 +94,21 @@ del usuario antes de buscar.
 carrera), `curso` (solo el material del curso) o `ambos`. El panel de
 métricas solo muestra agregados; nunca muestra quién preguntó.
 
+### Configuración del sistema
+
+| Tabla | Columnas | Nota |
+|---|---|---|
+| `parametros` | clave, valor, tipo, minimo, maximo, descripcion, actualizado_por, actualizado_en | valores que antes estaban fijos en el código |
+
+El administrador los cambia desde la pestaña **Configuración**, sin tocar el
+código ni reiniciar el servidor: umbral de similitud, top-k, máximo de citas,
+modelo de IA, temperatura, umbral de agrupación de temas, horas de sesión,
+tamaño máximo de PDF y los mensajes fijos del asistente. Cada valor se valida
+por tipo y rango antes de guardarse, y cada cambio queda en `logs`.
+
+La **API key** del modelo no es un parámetro: es un secreto y se queda en
+`.streamlit/secrets.toml` o en variables de entorno, fuera de la base de datos.
+
 ### Reglas de robustez
 
 - **Fechas**: todas las columnas de fecha son `DATETIME`, se llenan solas
@@ -93,8 +124,10 @@ métricas solo muestra agregados; nunca muestra quién preguntó.
 - **Transacciones**: cada operación corre dentro de `bd.transaccion()`; si algo
   falla se hace `ROLLBACK` y no queda nada a medias.
 - **Índices** sobre las claves foráneas más consultadas.
-- **Versión del esquema** en `PRAGMA user_version` (= 2). Si se detecta una base
-  de la versión 1, se recrea automáticamente.
+- **Versión del esquema** en `PRAGMA user_version` (= 3). Una base de la
+  versión 1 se recrea; una de la versión 2 se migra sin perder datos (se agregan
+  las tablas y la columna nuevas, y a cada docente se le asignan los cursos de
+  su carrera para que conserve el acceso que ya tenía).
 
 ---
 
@@ -123,6 +156,6 @@ coincide con `path` en los metadatos de ChromaDB.
 
 ## 3. Si cambias de computadora
 
-Si `sistema.db` es de la versión anterior, se recrea sola al arrancar. Luego
+Si `sistema.db` es de una versión anterior, se actualiza sola al arrancar. Luego
 `python arrancar.py` detecta el catálogo vacío y reindexa los PDF de
 `datos/docs/`. Para hacerlo a mano: `python -m nucleo.ingest`.

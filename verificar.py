@@ -108,7 +108,7 @@ with bd.transaccion() as c:
     sin_catalogo = c.execute("SELECT COUNT(*) FROM documentos").fetchone()[0] == 0
 esperadas = {"facultades", "carreras", "cursos", "roles", "usuarios", "usuario_carrera",
              "sesiones", "documentos", "documento_versiones", "conversaciones",
-             "mensajes", "consultas", "logs"}
+             "mensajes", "consultas", "logs", "curso_docente", "parametros"}
 if esperadas - tablas:
     fallo(f"Faltan tablas: {esperadas - tablas}")
 if huerfanas:

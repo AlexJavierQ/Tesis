@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 2.
+MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 3.
 
 Es la FUENTE DE VERDAD del sistema. Todas las tablas viven en un solo archivo
 (datos/sistema.db) y se relacionan por claves foraneas (FK). Los vectores del
 RAG siguen en ChromaDB; los PDF siguen en carpetas (datos/docs/...).
 
-Tablas (13):
+Tablas (15):
   ESTRUCTURA ACADEMICA
     facultades(id, nombre)
     carreras(id, facultad_id -> facultades, nombre)
     cursos(id, carrera_id -> carreras, nombre)
+    curso_docente(curso_id -> cursos, usuario_id -> usuarios)          N:M
   USUARIOS Y ACCESO
     roles(id, nombre)
     usuarios(id, usuario, nombre, correo, password, rol_id -> roles, activo, creado_en)
@@ -19,7 +20,11 @@ Tablas (13):
   DOCUMENTOS DEL RAG
     documentos(id, carrera_id, curso_id (NULL = global), nombre, activo, creado_en)
     documento_versiones(id, documento_id -> documentos, numero, ruta,
-                        fragmentos, subido_por -> usuarios, subido_en)
+                        fragmentos, subido_por -> usuarios, subido_en,
+                        restaurada_de)  <- numero de la version que se restauro
+  CONFIGURACION DEL SISTEMA (la edita el administrador desde la interfaz)
+    parametros(clave, valor, tipo, minimo, maximo, descripcion,
+               actualizado_por -> usuarios, actualizado_en)
   CHAT
     conversaciones(id, usuario_id -> usuarios, titulo, iniciada_en)
     mensajes(id, conversacion_id -> conversaciones, rol, texto, citas, creado_en)
@@ -44,8 +49,8 @@ DB = os.path.join(os.path.dirname(BASE), "datos", "sistema.db")
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
 CONSULTAS_VIEJA = os.path.join(os.path.dirname(BASE), "datos", "consultas.db")
 
-VERSION_ESQUEMA = 2
-ROLES = ("estudiante", "docente", "coordinacion")
+VERSION_ESQUEMA = 3
+ROLES = ("estudiante", "docente", "coordinacion", "administrador")
 FACULTAD_POR_DEFECTO = "Ingenierías y Arquitectura"
 CARRERA_POR_DEFECTO = "computacion"
 
@@ -104,6 +109,12 @@ def _crear_tablas(c):
         nombre      TEXT NOT NULL CHECK (length(trim(nombre)) > 0),
         UNIQUE (carrera_id, nombre)
     )""")
+    # que docentes dictan cada curso (la coordinacion los asigna)
+    c.execute("""CREATE TABLE IF NOT EXISTS curso_docente (
+        curso_id    INTEGER NOT NULL REFERENCES cursos(id) ON DELETE CASCADE,
+        usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        PRIMARY KEY (curso_id, usuario_id)
+    )""")
 
     # --- usuarios y acceso ---
     c.execute("""CREATE TABLE IF NOT EXISTS roles (
@@ -156,6 +167,7 @@ def _crear_tablas(c):
         fragmentos    INTEGER NOT NULL DEFAULT 0 CHECK (fragmentos >= 0),
         subido_por    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
         {_fecha("subido_en")},
+        restaurada_de INTEGER,      -- NULL = subida normal; N = copia de la version N
         UNIQUE (documento_id, numero)
     )""")
 
@@ -197,9 +209,24 @@ def _crear_tablas(c):
         {_fecha("creado_en")}
     )""")
 
+    # --- configuracion del sistema ---
+    # parametros que antes estaban escritos en el codigo. tipo + minimo/maximo
+    # permiten validar el valor antes de guardarlo.
+    c.execute(f"""CREATE TABLE IF NOT EXISTS parametros (
+        clave            TEXT PRIMARY KEY,
+        valor            TEXT NOT NULL,
+        tipo             TEXT NOT NULL CHECK (tipo IN ('entero', 'decimal', 'texto')),
+        minimo           REAL,
+        maximo           REAL,
+        descripcion      TEXT NOT NULL,
+        actualizado_por  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+        {_fecha("actualizado_en")}
+    )""")
+
     # indices sobre las FK mas consultadas (aceleran los JOIN y filtros)
     for sql in (
         "CREATE INDEX IF NOT EXISTS ix_cursos_carrera ON cursos(carrera_id)",
+        "CREATE INDEX IF NOT EXISTS ix_curso_docente_usuario ON curso_docente(usuario_id)",
         "CREATE INDEX IF NOT EXISTS ix_versiones_doc ON documento_versiones(documento_id)",
         "CREATE INDEX IF NOT EXISTS ix_conv_usuario ON conversaciones(usuario_id)",
         "CREATE INDEX IF NOT EXISTS ix_mensajes_conv ON mensajes(conversacion_id)",
@@ -211,22 +238,23 @@ def _crear_tablas(c):
 
 def _migrar_si_hace_falta(c):
     """
-    Si sistema.db viene de la version 1 del esquema (sin facultades, con
-    usuarios.carrera_id, etc.), se borran sus tablas y se recrean. Solo
-    contenia datos demo; los documentos se vuelven a registrar al reindexar.
+    Lleva una sistema.db antigua a la version actual del esquema.
+      v1 -> se recrea entera (era otro modelo y solo tenia datos demo).
+      v2 -> v3: cambios aditivos. Las tablas nuevas las crea _crear_tablas;
+               aqui solo se agrega la columna nueva. No se pierde nada.
     """
     version = c.execute("PRAGMA user_version").fetchone()[0]
-    if version >= VERSION_ESQUEMA:
-        return
-    viejas = [f[0] for f in c.execute(
+    tablas = [f[0] for f in c.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
-    if viejas:
-        print("[bd] Esquema antiguo detectado: se recrea sistema.db (version 2).")
+    if version < 2 and tablas:
+        print("[bd] Esquema v1 detectado: se recrea sistema.db.")
         c.execute("PRAGMA foreign_keys = OFF")
-        for t in viejas:
+        for t in tablas:
             c.execute(f'DROP TABLE IF EXISTS "{t}"')
         c.execute("PRAGMA foreign_keys = ON")
-    c.execute(f"PRAGMA user_version = {VERSION_ESQUEMA}")
+    elif version == 2:
+        print("[bd] Migrando sistema.db de v2 a v3.")
+        c.execute("ALTER TABLE documento_versiones ADD COLUMN restaurada_de INTEGER")
 
 
 def _seed(c):
@@ -291,10 +319,21 @@ def _importar_consultas_viejas(c):
 
 def inicializar():
     with transaccion() as c:
+        version_previa = c.execute("PRAGMA user_version").fetchone()[0]
         _migrar_si_hace_falta(c)
         _crear_tablas(c)
         _seed(c)
         _importar_consultas_viejas(c)
+        if version_previa == 2:
+            # en v2 un docente gestionaba todos los cursos de su carrera; al
+            # migrar se le asignan esos cursos para que no pierda el acceso
+            c.execute("""INSERT OR IGNORE INTO curso_docente (curso_id, usuario_id)
+                         SELECT cu.id, u.id FROM usuarios u
+                         JOIN roles r ON u.rol_id = r.id
+                         JOIN usuario_carrera uc ON uc.usuario_id = u.id
+                         JOIN cursos cu ON cu.carrera_id = uc.carrera_id
+                         WHERE r.nombre = 'docente'""")
+        c.execute(f"PRAGMA user_version = {VERSION_ESQUEMA}")
 
 
 # ---------- helpers de ids ----------
@@ -395,6 +434,55 @@ def crear_curso(carrera, nombre):
         raise ValueError("Ese curso ya existe.")
 
 
+def docentes_de_curso(carrera, curso):
+    """Usuarios (docentes) asignados a un curso."""
+    with transaccion() as c:
+        return [f[0] for f in c.execute("""
+            SELECT u.usuario FROM curso_docente cd
+            JOIN usuarios u  ON cd.usuario_id = u.id
+            JOIN cursos cu   ON cd.curso_id = cu.id
+            JOIN carreras ca ON cu.carrera_id = ca.id
+            WHERE ca.nombre=? AND cu.nombre=? ORDER BY u.usuario""", (carrera, curso))]
+
+
+def asignar_docentes(carrera, curso, usuarios):
+    """
+    Reemplaza la lista de docentes de un curso. Cada uno debe tener rol
+    docente y pertenecer a la carrera del curso.
+    """
+    cuid = id_curso(carrera, curso)
+    if not cuid:
+        raise ValueError("Curso no encontrado.")
+    with transaccion() as c:
+        ids = []
+        for u in usuarios:
+            fila = c.execute("""
+                SELECT u.id FROM usuarios u
+                JOIN roles r ON u.rol_id = r.id
+                JOIN usuario_carrera uc ON uc.usuario_id = u.id
+                JOIN carreras ca ON uc.carrera_id = ca.id
+                WHERE u.usuario=? AND r.nombre='docente' AND ca.nombre=?""",
+                (u, carrera)).fetchone()
+            if not fila:
+                raise ValueError(f"'{u}' no es docente de {carrera}.")
+            ids.append(fila[0])
+        c.execute("DELETE FROM curso_docente WHERE curso_id=?", (cuid,))
+        c.executemany("INSERT INTO curso_docente (curso_id, usuario_id) VALUES (?,?)",
+                      [(cuid, i) for i in ids])
+
+
+def cursos_de_docente(usuario):
+    """Cursos asignados a un docente: [{carrera, curso}]."""
+    with transaccion() as c:
+        filas = c.execute("""
+            SELECT ca.nombre, cu.nombre FROM curso_docente cd
+            JOIN usuarios u  ON cd.usuario_id = u.id
+            JOIN cursos cu   ON cd.curso_id = cu.id
+            JOIN carreras ca ON cu.carrera_id = ca.id
+            WHERE u.usuario=? ORDER BY ca.nombre, cu.nombre""", (usuario,)).fetchall()
+    return [{"carrera": f[0], "curso": f[1]} for f in filas]
+
+
 # ---------- documentos y versiones ----------
 _SQL_DOC = """
     SELECT d.id, d.nombre, d.activo, v.numero, v.ruta, v.fragmentos, v.subido_en,
@@ -447,7 +535,8 @@ def documentos_de(carrera, curso=None):
     return [_doc_dict(f) for f in filas]
 
 
-def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None):
+def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None,
+                      restaurada_de=None):
     """
     Registra una nueva version de un documento. Si el documento no existe,
     lo crea (version 1). Devuelve el numero de version asignado.
@@ -468,8 +557,9 @@ def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None):
         numero = 1 + (_id(c, "SELECT MAX(numero) FROM documento_versiones WHERE documento_id=?",
                           (doc_id,)) or 0)
         c.execute("""INSERT INTO documento_versiones
-                     (documento_id, numero, ruta, fragmentos, subido_por) VALUES (?,?,?,?,?)""",
-                  (doc_id, numero, ruta, fragmentos, uid))
+                     (documento_id, numero, ruta, fragmentos, subido_por, restaurada_de)
+                     VALUES (?,?,?,?,?,?)""",
+                  (doc_id, numero, ruta, fragmentos, uid, restaurada_de))
     return numero
 
 
@@ -489,11 +579,11 @@ def versiones_de(doc_id):
     """Historial de versiones de un documento (la mas nueva primero)."""
     with transaccion() as c:
         filas = c.execute("""
-            SELECT v.numero, v.ruta, v.fragmentos, v.subido_en, u.usuario
+            SELECT v.numero, v.ruta, v.fragmentos, v.subido_en, u.usuario, v.restaurada_de
             FROM documento_versiones v LEFT JOIN usuarios u ON v.subido_por = u.id
             WHERE v.documento_id=? ORDER BY v.numero DESC""", (doc_id,)).fetchall()
     return [{"numero": f[0], "ruta": f[1], "fragmentos": f[2], "subido_en": f[3],
-             "subido_por": f[4] or "—"} for f in filas]
+             "subido_por": f[4] or "—", "restaurada_de": f[5]} for f in filas]
 
 
 def cambiar_estado_documento(doc_id, activo):

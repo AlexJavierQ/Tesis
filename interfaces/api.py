@@ -6,6 +6,16 @@ Es el UNICO backend. Las interfaces (React y widget) la consumen por HTTP.
 Aqui no hay logica del RAG: solo se orquesta la llamada a los modulos del
 nucleo, se validan permisos y se serializa la respuesta.
 
+ROLES Y PERMISOS
+  administrador -> configuracion del sistema (parametros), todos los usuarios,
+                   bitacora completa. No gestiona contenido academico.
+  coordinacion  -> de facultad hacia abajo: facultades, carreras, cursos,
+                   asignacion de docentes, reglamentos generales, usuarios
+                   estudiante/docente de sus carreras, metricas de la carrera.
+  docente       -> solo los cursos que tiene asignados: sube, versiona,
+                   activa/desactiva documentos y ve sus metricas.
+  estudiante    -> usa el chat.
+
 Se corre con:  uvicorn interfaces.api:app --reload
 Docs interactivas:  http://localhost:8000/docs
 """
@@ -23,9 +33,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from nucleo import rag, ingest, vectorstore, pdfreader, metricas, auth, bd, historial
+from nucleo import (rag, ingest, vectorstore, pdfreader, metricas, auth, bd,
+                    historial, parametros)
 
-app = FastAPI(title="API Asistente de Practicum", version="4.0")
+app = FastAPI(title="API Asistente de Practicum", version="5.0")
 
 # CORS: origenes permitidos. En desarrollo el front corre en otro puerto.
 ORIGENES = [o for o in os.environ.get("CORS_ORIGINS", "").split(",") if o] or [
@@ -39,7 +50,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MAX_PDF_MB = 25
+Rol = Literal["estudiante", "docente", "coordinacion", "administrador"]
+ROLES_QUE_GESTIONA_COORD = ("estudiante", "docente")
 
 
 # ---------- MODELOS de peticion/respuesta ----------
@@ -62,12 +74,12 @@ class UsuarioNuevo(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=120)
     correo: str = Field(..., max_length=120)
     password: str = Field(..., min_length=6, max_length=200)
-    rol: Literal["estudiante", "docente", "coordinacion"]
-    carreras: List[str] = Field(..., min_length=1)
+    rol: Rol
+    carreras: List[str] = []
 
 
 class UsuarioCambio(BaseModel):
-    rol: Optional[Literal["estudiante", "docente", "coordinacion"]] = None
+    rol: Optional[Rol] = None
     carreras: Optional[List[str]] = None
     nombre: Optional[str] = Field(None, max_length=120)
     correo: Optional[str] = Field(None, max_length=120)
@@ -77,6 +89,14 @@ class UsuarioCambio(BaseModel):
 
 class Estado(BaseModel):
     activo: bool
+
+
+class Docentes(BaseModel):
+    usuarios: List[str]
+
+
+class Valor(BaseModel):
+    valor: str = Field(..., max_length=2000)
 
 
 # ---------- utilidades de seguridad ----------
@@ -102,9 +122,23 @@ def _exigir(authorization, *roles):
 
 
 def _exigir_carrera(usuario, carrera):
-    """Docentes y coordinadores solo gestionan las carreras que tienen asignadas."""
+    """Coordinacion y docentes solo trabajan en las carreras que tienen asignadas."""
     if carrera not in usuario["carreras"]:
         raise HTTPException(403, "No perteneces a esa carrera.")
+
+
+def _exigir_ambito_docs(usuario, carrera, curso):
+    """
+    Quien puede tocar los documentos de un ambito:
+      coordinacion -> reglamentos generales y cualquier curso de sus carreras
+      docente      -> solo los cursos que tiene asignados (nunca los generales)
+    """
+    _exigir_carrera(usuario, carrera)
+    if usuario["rol"] == "docente":
+        if not curso:
+            raise HTTPException(403, "Los reglamentos generales los gestiona la coordinacion.")
+        if {"carrera": carrera, "curso": curso} not in usuario["cursos_asignados"]:
+            raise HTTPException(403, "No tienes asignado ese curso.")
 
 
 def _nombre_valido(nombre):
@@ -130,7 +164,7 @@ def _resolver_ruta(ref):
     return destino
 
 
-# ==================== ESTRUCTURA (publica para leer) ====================
+# ==================== ESTRUCTURA ACADEMICA (leer: publico; crear: coordinacion) ====================
 @app.get("/salud")
 def salud():
     """Estado del servicio."""
@@ -173,7 +207,10 @@ def get_cursos(carrera: str):
 @app.post("/carreras")
 def crear_carrera(nombre: str = Form(...), facultad: str = Form(bd.FACULTAD_POR_DEFECTO),
                   authorization: str = Header(None)):
-    """Crea una carrera dentro de una facultad (en la BD) y su carpeta. Solo coordinacion."""
+    """
+    Crea una carrera dentro de una facultad (en la BD) y su carpeta. Solo
+    coordinacion; quien la crea queda asignado a ella para poder gestionarla.
+    """
     actor = _exigir(authorization, "coordinacion")
     nombre = _nombre_valido(nombre)
     try:
@@ -181,6 +218,7 @@ def crear_carrera(nombre: str = Form(...), facultad: str = Form(bd.FACULTAD_POR_
     except ValueError as e:
         raise HTTPException(409, str(e))
     os.makedirs(rag.carpeta_global(nombre), exist_ok=True)
+    auth.actualizar_usuario(actor["usuario"], carreras=actor["carreras"] + [nombre])
     bd.log("crear_carrera", f"{nombre} ({facultad})", actor["usuario"])
     return {"ok": True, "carrera": nombre}
 
@@ -188,8 +226,8 @@ def crear_carrera(nombre: str = Form(...), facultad: str = Form(bd.FACULTAD_POR_
 @app.post("/carreras/{carrera}/cursos")
 def crear_curso(carrera: str, nombre: str = Form(...),
                 authorization: str = Header(None)):
-    """Crea un curso (en la BD) y su carpeta. Solo docente/coord de esa carrera."""
-    actor = _exigir(authorization, "docente", "coordinacion")
+    """Crea un curso (en la BD) y su carpeta. Solo coordinacion de esa carrera."""
+    actor = _exigir(authorization, "coordinacion")
     _exigir_carrera(actor, carrera)
     nombre = _nombre_valido(nombre)
     try:
@@ -199,6 +237,29 @@ def crear_curso(carrera: str, nombre: str = Form(...),
     os.makedirs(rag.carpeta_curso(carrera, nombre), exist_ok=True)
     bd.log("crear_curso", f"{carrera} / {nombre}", actor["usuario"])
     return {"ok": True, "curso": nombre}
+
+
+@app.get("/carreras/{carrera}/cursos/{curso}/docentes")
+def get_docentes_curso(carrera: str, curso: str, authorization: str = Header(None)):
+    """Docentes asignados a un curso. Solo coordinacion de esa carrera."""
+    actor = _exigir(authorization, "coordinacion")
+    _exigir_carrera(actor, carrera)
+    return bd.docentes_de_curso(carrera, curso)
+
+
+@app.put("/carreras/{carrera}/cursos/{curso}/docentes")
+def asignar_docentes_curso(carrera: str, curso: str, d: Docentes,
+                           authorization: str = Header(None)):
+    """Define que docentes dictan un curso (reemplaza la lista). Solo coordinacion."""
+    actor = _exigir(authorization, "coordinacion")
+    _exigir_carrera(actor, carrera)
+    try:
+        bd.asignar_docentes(carrera, curso, d.usuarios)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    bd.log("asignar_docentes", f"{carrera} / {curso}: {', '.join(d.usuarios) or '(ninguno)'}",
+           actor["usuario"])
+    return {"ok": True}
 
 
 # ==================== AUTENTICACION ====================
@@ -230,18 +291,41 @@ def api_logout(authorization: str = Header(None)):
     return {"ok": True}
 
 
-# ==================== GESTION DE USUARIOS (solo coordinacion) ====================
+# ==================== GESTION DE USUARIOS (administrador y coordinacion) ====================
+def _coord_puede_tocar(actor, objetivo):
+    """
+    La coordinacion solo gestiona estudiantes y docentes que compartan alguna
+    de sus carreras. El administrador gestiona a todos.
+    """
+    if actor["rol"] == "administrador":
+        return True
+    return (objetivo["rol"] in ROLES_QUE_GESTIONA_COORD
+            and bool(set(objetivo["carreras"]) & set(actor["carreras"])))
+
+
+def _validar_alta_coord(actor, rol, carreras):
+    """Lo que la coordinacion puede asignar: rol estudiante/docente y carreras propias."""
+    if actor["rol"] == "administrador":
+        return
+    if rol and rol not in ROLES_QUE_GESTIONA_COORD:
+        raise HTTPException(403, "La coordinacion solo gestiona estudiantes y docentes.")
+    if carreras is not None and not set(carreras) <= set(actor["carreras"]):
+        raise HTTPException(403, "Solo puedes asignar carreras que coordinas.")
+
+
 @app.get("/usuarios")
 def get_usuarios(authorization: str = Header(None)):
-    """Lista todos los usuarios (sin passwords). Solo coordinacion."""
-    _exigir(authorization, "coordinacion")
-    return auth.listar_usuarios()
+    """Lista de usuarios (sin passwords). Admin: todos. Coord: los de sus carreras."""
+    actor = _exigir(authorization, "administrador", "coordinacion")
+    return [u for u in auth.listar_usuarios()
+            if u["usuario"] == actor["usuario"] or _coord_puede_tocar(actor, u)]
 
 
 @app.post("/usuarios")
 def crear_usuario_api(u: UsuarioNuevo, authorization: str = Header(None)):
-    """Crea un usuario nuevo. Solo coordinacion."""
-    actor = _exigir(authorization, "coordinacion")
+    """Crea un usuario nuevo. Admin: cualquier rol. Coord: estudiante/docente."""
+    actor = _exigir(authorization, "administrador", "coordinacion")
+    _validar_alta_coord(actor, u.rol, u.carreras)
     try:
         auth.crear_usuario(u.usuario.strip(), u.nombre, u.correo, u.password, u.rol, u.carreras)
     except ValueError as e:
@@ -254,15 +338,21 @@ def crear_usuario_api(u: UsuarioNuevo, authorization: str = Header(None)):
 def actualizar_usuario_api(usuario: str, cambio: UsuarioCambio,
                            authorization: str = Header(None)):
     """
-    Actualiza datos de un usuario. Solo coordinacion.
-    Protecciones: coord no puede quitarse su propio rol ni desactivarse.
+    Actualiza datos de un usuario.
+    Protecciones: nadie puede cambiarse su propio rol ni desactivarse.
     """
-    actor = _exigir(authorization, "coordinacion")
+    actor = _exigir(authorization, "administrador", "coordinacion")
+    objetivo = auth.datos_de(usuario)
+    if not objetivo:
+        raise HTTPException(404, "Usuario no encontrado.")
     if actor["usuario"] == usuario:
-        if cambio.rol and cambio.rol != "coordinacion":
+        if cambio.rol and cambio.rol != actor["rol"]:
             raise HTTPException(400, "No puedes cambiar tu propio rol.")
         if cambio.activo is False:
             raise HTTPException(400, "No puedes desactivarte a ti mismo.")
+    elif not _coord_puede_tocar(actor, objetivo):
+        raise HTTPException(403, "No puedes gestionar a ese usuario.")
+    _validar_alta_coord(actor, cambio.rol, cambio.carreras)
     try:
         auth.actualizar_usuario(usuario, cambio.rol, cambio.carreras, cambio.nuevo_password,
                                 cambio.activo, cambio.nombre, cambio.correo)
@@ -275,10 +365,15 @@ def actualizar_usuario_api(usuario: str, cambio: UsuarioCambio,
 
 @app.delete("/usuarios/{usuario}")
 def borrar_usuario_api(usuario: str, authorization: str = Header(None)):
-    """Elimina un usuario. Solo coordinacion. No puede borrarse a si mismo."""
-    actor = _exigir(authorization, "coordinacion")
+    """Elimina un usuario. Nadie puede borrarse a si mismo."""
+    actor = _exigir(authorization, "administrador", "coordinacion")
     if actor["usuario"] == usuario:
         raise HTTPException(400, "No puedes borrarte a ti mismo.")
+    objetivo = auth.datos_de(usuario)
+    if not objetivo:
+        raise HTTPException(404, "Usuario no encontrado.")
+    if not _coord_puede_tocar(actor, objetivo):
+        raise HTTPException(403, "No puedes gestionar a ese usuario.")
     auth.borrar_usuario(usuario)
     bd.log("borrar_usuario", usuario, actor["usuario"])
     return {"ok": True}
@@ -363,14 +458,18 @@ def borrar_conversacion_api(cid: int, authorization: str = Header(None)):
     return {"ok": True}
 
 
-# ==================== DOCUMENTOS ====================
+# ==================== DOCUMENTOS (coordinacion y docente) ====================
 def _doc_gestionable(doc_id, actor):
-    """Devuelve el documento si existe y el actor gestiona su carrera."""
+    """Devuelve el documento si existe y el actor puede gestionar su ambito."""
     d = bd.documento_por_id(doc_id)
     if not d:
         raise HTTPException(404, "Documento no encontrado.")
-    _exigir_carrera(actor, d["carrera"])
+    _exigir_ambito_docs(actor, d["carrera"], d["curso"])
     return d
+
+
+def _ambito(d):
+    return f"{d['carrera']}/{d['curso'] or 'global'}/{d['nombre']}"
 
 
 @app.get("/documentos")
@@ -391,10 +490,10 @@ def subir_documento(carrera: str = Form(...),
                     authorization: str = Header(None)):
     """
     Sube un PDF y lo indexa. Si ya existe uno con el mismo nombre en ese
-    ambito, se guarda como NUEVA VERSION. Solo docente/coordinacion.
+    ambito, se guarda como NUEVA VERSION (la anterior queda de respaldo).
     """
     actor = _exigir(authorization, "docente", "coordinacion")
-    _exigir_carrera(actor, carrera)
+    _exigir_ambito_docs(actor, carrera, curso)
     if curso and curso not in rag.cursos(carrera):
         raise HTTPException(404, "Curso no encontrado.")
     nombre = os.path.basename(archivo.filename or "")
@@ -403,8 +502,9 @@ def subir_documento(carrera: str = Form(...),
     contenido = archivo.file.read()
     if not contenido.startswith(b"%PDF"):
         raise HTTPException(400, "El archivo no es un PDF valido.")
-    if len(contenido) > MAX_PDF_MB * 1024 * 1024:
-        raise HTTPException(400, f"El PDF supera {MAX_PDF_MB} MB.")
+    max_mb = parametros.obtener("max_pdf_mb")
+    if len(contenido) > max_mb * 1024 * 1024:
+        raise HTTPException(400, f"El PDF supera {max_mb} MB.")
 
     r = ingest.guardar_documento(carrera, curso, nombre, contenido, actor["usuario"])
     bd.log("subir_documento", f"{carrera}/{curso or 'global'}/{nombre} v{r['version']}",
@@ -414,10 +514,26 @@ def subir_documento(carrera: str = Form(...),
 
 @app.get("/documentos/{doc_id}/versiones")
 def versiones_documento(doc_id: int, authorization: str = Header(None)):
-    """Historial de versiones de un documento. Solo docente/coordinacion."""
+    """Historial de versiones de un documento."""
     actor = _exigir(authorization, "docente", "coordinacion")
     _doc_gestionable(doc_id, actor)
     return bd.versiones_de(doc_id)
+
+
+@app.post("/documentos/{doc_id}/versiones/{numero}/restaurar")
+def restaurar_version(doc_id: int, numero: int, authorization: str = Header(None)):
+    """
+    Vuelve a una version anterior como lo hace git (revert): crea una version
+    NUEVA con el contenido de la elegida; no se borra ninguna.
+    """
+    actor = _exigir(authorization, "docente", "coordinacion")
+    d = _doc_gestionable(doc_id, actor)
+    try:
+        r = ingest.restaurar_version(doc_id, numero, actor["usuario"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    bd.log("restaurar_documento", f"{_ambito(d)}: v{numero} -> v{r['version']}", actor["usuario"])
+    return {"ok": True, **r}
 
 
 @app.patch("/documentos/{doc_id}/estado")
@@ -426,19 +542,18 @@ def estado_documento(doc_id: int, e: Estado, authorization: str = Header(None)):
     actor = _exigir(authorization, "docente", "coordinacion")
     d = _doc_gestionable(doc_id, actor)
     ingest.cambiar_estado(doc_id, e.activo)
-    bd.log("activar_documento" if e.activo else "desactivar_documento",
-           f"{d['carrera']}/{d['curso'] or 'global'}/{d['nombre']}", actor["usuario"])
+    bd.log("activar_documento" if e.activo else "desactivar_documento", _ambito(d),
+           actor["usuario"])
     return {"ok": True, "activo": e.activo}
 
 
 @app.delete("/documentos/{doc_id}")
 def borrar_documento(doc_id: int, authorization: str = Header(None)):
-    """Elimina un documento con todas sus versiones. Solo docente/coordinacion."""
+    """Elimina un documento con todas sus versiones."""
     actor = _exigir(authorization, "docente", "coordinacion")
     d = _doc_gestionable(doc_id, actor)
     ingest.borrar_documento(doc_id)
-    bd.log("borrar_documento", f"{d['carrera']}/{d['curso'] or 'global'}/{d['nombre']}",
-           actor["usuario"])
+    bd.log("borrar_documento", _ambito(d), actor["usuario"])
     return {"ok": True}
 
 
@@ -471,21 +586,43 @@ def get_metricas(carrera: Optional[str] = None,
                  authorization: str = Header(None)):
     """
     Agregados (nunca se muestra quien pregunto).
-      - Coordinacion: una carrera suya completa, o un curso.
-      - Docente: solo un curso concreto de una carrera suya.
-      - Estudiante: no.
+      - Coordinacion: una carrera suya completa, o uno de sus cursos.
+      - Docente: solo un curso que tenga asignado.
     """
     usuario = _exigir(authorization, "docente", "coordinacion")
     carrera = carrera or usuario["carrera"]
     _exigir_carrera(usuario, carrera)
-    if usuario["rol"] == "docente" and not curso:
-        raise HTTPException(400, "El docente debe indicar un curso.")
+    if usuario["rol"] == "docente":
+        if not curso:
+            raise HTTPException(400, "El docente debe indicar un curso.")
+        _exigir_ambito_docs(usuario, carrera, curso)
     return metricas.resumen(metricas.listar(carrera, curso))
 
 
-# ==================== BITACORA (solo coordinacion) ====================
+# ==================== CONFIGURACION DEL SISTEMA (solo administrador) ====================
+@app.get("/parametros")
+def get_parametros(authorization: str = Header(None)):
+    """Parametros configurables con su descripcion, rango y ultimo cambio."""
+    _exigir(authorization, "administrador")
+    return parametros.listar()
+
+
+@app.put("/parametros/{clave}")
+def put_parametro(clave: str, v: Valor, authorization: str = Header(None)):
+    """Cambia un parametro (se valida tipo y rango). Queda en la bitacora."""
+    actor = _exigir(authorization, "administrador")
+    try:
+        anterior = parametros.actualizar(clave, v.valor, actor["usuario"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    bd.log("cambiar_parametro", f"{clave}: {anterior[:60]} -> {v.valor.strip()[:60]}",
+           actor["usuario"])
+    return {"ok": True}
+
+
+# ==================== BITACORA (solo administrador) ====================
 @app.get("/logs")
 def get_logs(limite: int = Query(200, ge=1, le=1000), authorization: str = Header(None)):
     """Ultimas acciones registradas en el sistema (quien, que, cuando)."""
-    _exigir(authorization, "coordinacion")
+    _exigir(authorization, "administrador")
     return bd.logs(limite)

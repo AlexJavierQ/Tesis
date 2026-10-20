@@ -18,6 +18,7 @@ Usuarios demo:
   estudiante / demo2026
   docente    / demo2026
   coord      / demo2026
+  admin      / demo2026   (administrador: configuracion del sistema)
 
 Ctrl+C para parar TODO.
 """
@@ -47,7 +48,7 @@ def preparar():
     else:
         paso(f"Indice OK ({vectorstore.contar()} fragmentos).")
 
-    paso("Usuarios demo listos: estudiante / docente / coord (pass: demo2026)")
+    paso("Usuarios demo listos: estudiante / docente / coord / admin (pass: demo2026)")
 
 
 def instalar_react():

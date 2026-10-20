@@ -54,6 +54,17 @@ export const api = {
   carreras: () => pedir("/carreras"),
   cursos: (carrera) => pedir(`/carreras/${encodeURIComponent(carrera)}/cursos`),
 
+  crearFacultad: (nombre) => {
+    const fd = new FormData();
+    fd.append("nombre", nombre);
+    return pedir("/facultades", { method: "POST", body: fd });
+  },
+  crearCarrera: (nombre, facultad) => {
+    const fd = new FormData();
+    fd.append("nombre", nombre);
+    fd.append("facultad", facultad);
+    return pedir("/carreras", { method: "POST", body: fd });
+  },
   crearCurso: (carrera, nombre) => {
     const fd = new FormData();
     fd.append("nombre", nombre);
@@ -62,6 +73,15 @@ export const api = {
       body: fd,
     });
   },
+  // docentes asignados a un curso (solo coord)
+  docentesCurso: (carrera, curso) =>
+    pedir(`/carreras/${encodeURIComponent(carrera)}/cursos/${encodeURIComponent(curso)}/docentes`),
+  asignarDocentes: (carrera, curso, usuarios) =>
+    pedir(`/carreras/${encodeURIComponent(carrera)}/cursos/${encodeURIComponent(curso)}/docentes`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuarios }),
+    }),
 
   // consulta. modo: "general" | "curso" | "ambos" (desde donde se responde)
   preguntar: (pregunta, carrera, curso, modo, conversacionId) =>
@@ -101,6 +121,8 @@ export const api = {
   },
   borrar: (id) => pedir(`/documentos/${id}`, { method: "DELETE" }),
   versiones: (id) => pedir(`/documentos/${id}/versiones`),
+  restaurar: (id, numero) =>
+    pedir(`/documentos/${id}/versiones/${numero}/restaurar`, { method: "POST" }),
   cambiarEstado: (id, activo) =>
     pedir(`/documentos/${id}/estado`, {
       method: "PATCH",
@@ -108,8 +130,15 @@ export const api = {
       body: JSON.stringify({ activo }),
     }),
 
-  // bitacora (solo coord)
+  // solo administrador: bitacora y configuracion del sistema
   logs: () => pedir("/logs"),
+  parametros: () => pedir("/parametros"),
+  cambiarParametro: (clave, valor) =>
+    pedir(`/parametros/${encodeURIComponent(clave)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valor: String(valor) }),
+    }),
 
   // metricas (coord: sin curso -> global de la carrera; docente: siempre con curso)
   metricas: (carrera, curso) => {

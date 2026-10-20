@@ -32,7 +32,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nucleo import config  # noqa: F401  (carga las keys antes que el motor)
-from nucleo import rag
+from nucleo import rag, parametros
 
 BASE = os.path.dirname(__file__)
 PREGUNTAS = os.path.join(BASE, "preguntas_eval.json")
@@ -71,7 +71,7 @@ def evaluar(casos, con_llm=True):
         scopes = rag.scopes_de(carrera, curso)
 
         t0 = time.perf_counter()
-        hits_raw = vectorstore.buscar(caso["pregunta"], k=rag.TOP_K,
+        hits_raw = vectorstore.buscar(caso["pregunta"], k=parametros.obtener("top_k"),
                                        filtro={"scope": {"$in": scopes}})
         # normalizamos al formato que espera _acierta: {texto, fuente, ...}
         hits = [{"texto": h["texto"], "fuente": h["meta"].get("fuente", "?"),
@@ -123,7 +123,7 @@ def informe(resultados, con_llm=True):
     L.append("## Recuperación\n")
     L.append("| Métrica | Valor |")
     L.append("|---|---|")
-    L.append(f"| recall@{rag.TOP_K} | {pct([r['recall'] for r in dentro]):.1f} % |")
+    L.append(f"| recall@{parametros.obtener('top_k')} | {pct([r['recall'] for r in dentro]):.1f} % |")
     L.append(f"| precision@1 | {pct([r['top1'] for r in dentro]):.1f} % |")
     L.append(f"| MRR | {statistics.mean([r['mrr'] for r in dentro]) if dentro else 0:.3f} |")
     lat = [r["ms_recuperacion"] for r in resultados]
@@ -190,9 +190,8 @@ def informe(resultados, con_llm=True):
                      f"- **{r['pregunta']}** — {motivo}")
 
     L.append("\n---\n")
-    from nucleo import llm as _llm
-    L.append(f"Parámetros: top-k = {rag.TOP_K}, umbral de distancia = {rag.UMBRAL}, "
-             f"modelo = `{_llm.MODELO}` (groq).")
+    L.append(f"Parámetros: top-k = {parametros.obtener('top_k')}, umbral de distancia = {parametros.obtener('umbral_similitud')}, "
+             f"modelo = `{parametros.obtener('modelo_llm')}` (groq).")
     L.append("\nReproducible con `python evaluacion.py`.")
     return "\n".join(L)
 

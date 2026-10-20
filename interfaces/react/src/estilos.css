@@ -213,3 +213,10 @@ input[type="radio"], input[type="checkbox"] { width: auto; padding: 0; margin: 0
 .contexto label, .checks label { white-space: nowrap; }
 .contexto select { width: auto; }
 .sesion select { width: auto; padding: 5px 8px; }
+
+/* ---------- versiones y configuracion ---------- */
+.btn-mini { margin-left: 8px; padding: 2px 8px; font-size: 11px; }
+.tabla-config td { vertical-align: top; }
+.tabla-config textarea { width: 100%; min-width: 260px; font: inherit; color: inherit; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.tabla-config input[type="number"] { max-width: 120px; }
+.tabla-config small { color: var(--gris); }

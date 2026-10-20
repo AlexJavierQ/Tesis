@@ -75,7 +75,7 @@ def indexar_pdf(path, scope):
     return len(textos)
 
 
-def guardar_documento(carrera, curso, nombre, contenido, usuario=None):
+def guardar_documento(carrera, curso, nombre, contenido, usuario=None, restaurada_de=None):
     """
     Guarda un PDF subido como NUEVA VERSION de su documento.
       - Si ya habia un archivo con ese nombre en el ambito, la version anterior
@@ -83,6 +83,7 @@ def guardar_documento(carrera, curso, nombre, contenido, usuario=None):
       - El archivo vigente siempre queda con su nombre original, y es el unico
         que se indexa en ChromaDB.
       - Si el documento estaba DESACTIVADO, se guarda la version pero no se indexa.
+    restaurada_de: numero de version copiada (solo cuando se restaura).
     Devuelve {version, fragmentos, activo}.
     """
     carpeta = _carpeta(carrera, curso)
@@ -102,8 +103,30 @@ def guardar_documento(carrera, curso, nombre, contenido, usuario=None):
 
     activo = previo["activo"] if previo else True
     n = indexar_pdf(destino, _scope(carrera, curso)) if activo else 0
-    version = bd.registrar_version(carrera, curso, nombre, _rel(destino), n, usuario)
+    version = bd.registrar_version(carrera, curso, nombre, _rel(destino), n, usuario,
+                                   restaurada_de)
     return {"version": version, "fragmentos": n, "activo": activo}
+
+
+def restaurar_version(doc_id, numero, usuario=None):
+    """
+    Vuelve a una version anterior AL ESTILO GIT (revert): no borra ni reescribe
+    nada; copia el contenido de la version `numero` como una version NUEVA.
+      v1, v2, v3 (vigente)  --restaurar v1-->  v1, v2, v3, v4 (= copia de v1)
+    Asi el historial queda completo y se sabe quien restauro y cuando.
+    """
+    d = bd.documento_por_id(doc_id)
+    if not d:
+        raise ValueError("Documento no encontrado.")
+    elegida = next((v for v in bd.versiones_de(doc_id) if v["numero"] == numero), None)
+    if not elegida:
+        raise ValueError("Esa version no existe.")
+    if numero == d["version"]:
+        raise ValueError("Esa ya es la version vigente.")
+    with open(os.path.join(DOCS, elegida["ruta"]), "rb") as f:
+        contenido = f.read()
+    return guardar_documento(d["carrera"], d["curso"], d["nombre"], contenido, usuario,
+                             restaurada_de=numero)
 
 
 def cambiar_estado(doc_id, activo):

@@ -30,7 +30,7 @@ export default function Login({ onOk }) {
       <form className="caja-login" onSubmit={enviar}>
         <h1>Asistente de Practicum</h1>
         <p className="ayuda">
-          Usuarios de demo: <b>estudiante / docente / coord</b> — contrasena: <b>demo2026</b>
+          Usuarios de demo: <b>estudiante / docente / coord / admin</b> — contrasena: <b>demo2026</b>
         </p>
         <label>Usuario o correo
           <input value={usuario} onChange={(e) => setUsuario(e.target.value)} required autoFocus />

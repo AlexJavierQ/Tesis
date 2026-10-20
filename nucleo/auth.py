@@ -18,10 +18,9 @@ import hashlib
 import secrets
 import sqlite3
 
-from nucleo import bd
+from nucleo import bd, parametros
 
 ITERACIONES = 200_000   # coste del hash: alto = mas seguro y mas lento
-HORAS_SESION = 8        # una sesion caduca a las 8 horas
 PATRON_CORREO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -53,9 +52,15 @@ def _validar_correo(correo):
     return correo
 
 
-def _ids_carreras(c, carreras):
-    """Convierte nombres de carrera en ids. Exige al menos una y que todas existan."""
-    if not carreras:
+def _ids_carreras(c, carreras, rol):
+    """
+    Convierte nombres de carrera en ids y verifica que existan.
+    Todos los roles necesitan al menos una carrera, menos el administrador,
+    que trabaja a nivel de sistema.
+    """
+    if rol == "administrador":
+        carreras = carreras or []
+    elif not carreras:
         raise ValueError("El usuario debe tener al menos una carrera.")
     ids = []
     for nombre in carreras:
@@ -68,17 +73,25 @@ def _ids_carreras(c, carreras):
 
 # ---------- seed de usuarios demo ----------
 def _seed():
-    """Crea los usuarios de demostracion la primera vez (si no hay usuarios)."""
-    with bd.transaccion() as c:
-        n = c.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]
-    if n == 0:
-        demos = [
-            ("estudiante", "Estudiante Demo",   "estudiante@utpl.edu.ec", "estudiante"),
-            ("docente",    "Docente Demo",      "docente@utpl.edu.ec",    "docente"),
-            ("coord",      "Coordinación Demo", "coord@utpl.edu.ec",      "coordinacion"),
-        ]
-        for u, nombre, correo, rol in demos:
-            crear_usuario(u, nombre, correo, "demo2026", rol, [bd.CARRERA_POR_DEFECTO])
+    """
+    Crea los usuarios de demostracion que falten (contrasena demo2026).
+    El docente demo queda asignado a los cursos de la carrera por defecto.
+    """
+    demos = [
+        ("estudiante", "Estudiante Demo",    "estudiante@utpl.edu.ec", "estudiante"),
+        ("docente",    "Docente Demo",       "docente@utpl.edu.ec",    "docente"),
+        ("coord",      "Coordinación Demo",  "coord@utpl.edu.ec",      "coordinacion"),
+        ("admin",      "Administrador Demo", "admin@utpl.edu.ec",      "administrador"),
+    ]
+    for u, nombre, correo, rol in demos:
+        if bd.id_usuario(u):
+            continue
+        carreras = [] if rol == "administrador" else [bd.CARRERA_POR_DEFECTO]
+        crear_usuario(u, nombre, correo, "demo2026", rol, carreras)
+        if rol == "docente":
+            for curso in bd.cursos(bd.CARRERA_POR_DEFECTO):
+                bd.asignar_docentes(bd.CARRERA_POR_DEFECTO, curso,
+                                    bd.docentes_de_curso(bd.CARRERA_POR_DEFECTO, curso) + [u])
 
 
 # ---------- CRUD de usuarios ----------
@@ -90,7 +103,7 @@ def crear_usuario(usuario, nombre, correo, password, rol, carreras):
             rid = c.execute("SELECT id FROM roles WHERE nombre=?", (rol,)).fetchone()
             if not rid:
                 raise ValueError("Rol no valido.")
-            ids = _ids_carreras(c, carreras)
+            ids = _ids_carreras(c, carreras, rol)
             uid = c.execute(
                 "INSERT INTO usuarios (usuario, nombre, correo, password, rol_id) VALUES (?,?,?,?,?)",
                 (usuario, nombre.strip() or usuario, correo, _hashear(password), rid[0]),
@@ -136,8 +149,13 @@ def actualizar_usuario(usuario, rol=None, carreras=None, nuevo_password=None,
                 if not rid:
                     raise ValueError("Rol no valido.")
                 c.execute("UPDATE usuarios SET rol_id=? WHERE id=?", (rid[0], uid))
+                if rol != "docente":   # deja de ser docente -> pierde sus cursos asignados
+                    c.execute("DELETE FROM curso_docente WHERE usuario_id=?", (uid,))
             if carreras is not None:
-                ids = _ids_carreras(c, carreras)
+                rol_actual = rol or c.execute(
+                    "SELECT r.nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id WHERE u.id=?",
+                    (uid,)).fetchone()[0]
+                ids = _ids_carreras(c, carreras, rol_actual)
                 c.execute("DELETE FROM usuario_carrera WHERE usuario_id=?", (uid,))
                 c.executemany("INSERT INTO usuario_carrera (usuario_id, carrera_id) VALUES (?,?)",
                               [(uid, cid) for cid in ids])
@@ -155,6 +173,16 @@ def actualizar_usuario(usuario, rol=None, carreras=None, nuevo_password=None,
                     c.execute("DELETE FROM sesiones WHERE usuario_id=?", (uid,))
     except sqlite3.IntegrityError:
         raise ValueError("Ese correo ya esta en uso.")
+
+
+def datos_de(usuario):
+    """{usuario, rol, carreras} de un usuario, o None. Para validar permisos."""
+    with bd.transaccion() as c:
+        fila = c.execute("""SELECT u.id, r.nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
+                            WHERE u.usuario=?""", (usuario,)).fetchone()
+        if not fila:
+            return None
+        return {"usuario": usuario, "rol": fila[1], "carreras": _carreras_de(c, fila[0])}
 
 
 def borrar_usuario(usuario):
@@ -182,7 +210,7 @@ def login(identificador, password):
         token = secrets.token_urlsafe(32)
         c.execute("""INSERT INTO sesiones (token, usuario_id, expira_en)
                      VALUES (?, ?, datetime('now','localtime', ?))""",
-                  (token, fila[0], f"+{HORAS_SESION} hours"))
+                  (token, fila[0], f"+{parametros.obtener('horas_sesion')} hours"))
     return token
 
 
@@ -190,6 +218,7 @@ def usuario_de(token):
     """
     Dado un token VIGENTE, devuelve el usuario con sus carreras, o None.
     'carrera' es la primera de la lista (la que se usa por defecto).
+    'cursos_asignados' solo tiene datos para docentes: [{carrera, curso}].
     """
     if not token:
         return None
@@ -205,7 +234,8 @@ def usuario_de(token):
             return None
         carreras = _carreras_de(c, fila[0])
     return {"usuario": fila[1], "nombre": fila[2], "correo": fila[3], "rol": fila[4],
-            "carreras": carreras, "carrera": carreras[0] if carreras else None}
+            "carreras": carreras, "carrera": carreras[0] if carreras else None,
+            "cursos_asignados": bd.cursos_de_docente(fila[1]) if fila[4] == "docente" else []}
 
 
 def logout(token):

@@ -13,10 +13,11 @@ degrada la respuesta a mostrar los fragmentos crudos.
 import os
 import requests
 from nucleo import config  # noqa: F401  -> carga la key al importar este modulo
+from nucleo import parametros
 
-MODELO = "openai/gpt-oss-20b"
 URL = "https://api.groq.com/openai/v1/chat/completions"
-TEMPERATURA = 0.2  # bajo para respuestas mas fieles al contexto
+# el modelo y la temperatura son parametros editables por el administrador
+# (si Groq retira un modelo, se cambia desde la interfaz sin tocar codigo)
 
 
 def generar(prompt):
@@ -29,8 +30,8 @@ def generar(prompt):
             URL,
             headers={"Authorization": f"Bearer {key}"},
             json={
-                "model": MODELO,
-                "temperature": TEMPERATURA,
+                "model": parametros.obtener("modelo_llm"),
+                "temperature": parametros.obtener("temperatura"),
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=30,

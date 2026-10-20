@@ -13,23 +13,19 @@ Ambitos (scope): etiqueta que distingue de que documentos se puede leer.
 """
 import os
 import re
-from nucleo import vectorstore, llm, bd
+from nucleo import vectorstore, llm, bd, parametros
 
 BASE = os.path.dirname(__file__)
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
 
-TOP_K = 8          # fragmentos a recuperar
-UMBRAL = 0.65      # si el mas cercano supera esta distancia, NO se responde
-MAX_CITAS = 3      # citas mostradas al usuario
+# Los ajustes (top_k, umbral_similitud, max_citas, mensajes fijos) ya no son
+# constantes: se leen de la tabla `parametros` cada vez que se usan, asi el
+# administrador los cambia desde la interfaz sin tocar el codigo.
 
-ABSTENCION = ("No tengo informacion oficial sobre eso. "
-              "Te recomiendo consultar con la coordinacion.")
 
-AYUDA = ("Soy el asistente de Practicum de la UTPL. Respondo con los "
-         "reglamentos y silabos oficiales. Preguntame por ejemplo: cuantas "
-         "horas necesitas, cual es el plazo del informe, que formato usar, "
-         "cual es la nota minima o los prerrequisitos. Si algo no esta en "
-         "los documentos, te derivo a la coordinacion.")
+def _abstencion():
+    """Frase canonica de abstencion (configurable)."""
+    return parametros.obtener("mensaje_abstencion")
 
 
 def _mensaje_social(pregunta):
@@ -40,14 +36,14 @@ def _mensaje_social(pregunta):
     q = pregunta.lower().strip(" ?!.,¿¡")
     if q in ("hola", "buenas", "buenos dias", "buenas tardes", "buenas noches",
              "hey", "que tal", "saludos"):
-        return "Hola. " + AYUDA
+        return "Hola. " + parametros.obtener("mensaje_ayuda")
     if q in ("gracias", "muchas gracias", "ok", "vale", "perfecto",
              "entendido", "listo", "genial"):
         return "Con gusto. Si te queda otra duda sobre el Practicum, aqui estoy."
     if any(t in q for t in ("ayuda", "que puedo pregunt", "que puedes",
                             "como funcionas", "quien eres", "para que sirves",
                             "help")):
-        return AYUDA
+        return parametros.obtener("mensaje_ayuda")
     return None
 
 
@@ -124,11 +120,13 @@ def _contexto(hits):
 
 def _bajo_umbral(hits):
     """Deja solo los fragmentos lo bastante parecidos (capa anti-alucinacion 1)."""
-    return [h for h in hits if h["distancia"] <= UMBRAL]
+    umbral = parametros.obtener("umbral_similitud")
+    return [h for h in hits if h["distancia"] <= umbral]
 
 
 def _citas_de(usados):
-    """Hasta MAX_CITAS fuentes distintas (sin repetir archivo+pagina)."""
+    """Hasta max_citas fuentes distintas (sin repetir archivo+pagina)."""
+    max_citas = parametros.obtener("max_citas")
     vistos, citas = set(), []
     for h in usados:
         clave = (h["meta"]["fuente"], h["meta"]["pagina"])
@@ -139,7 +137,7 @@ def _citas_de(usados):
                 "pagina": h["meta"]["pagina"],
                 "path": h["meta"].get("path", ""),
             })
-        if len(citas) >= MAX_CITAS:
+        if len(citas) >= max_citas:
             break
     return citas
 
@@ -155,8 +153,9 @@ def _empaquetar(texto, usados):
                             for h in usados[:2])
         return {"respuesta": "(Segun los documentos oficiales:)\n\n" + crudo,
                 "citas": citas, "con_respaldo": True}
-    if ABSTENCION[:30].lower() in texto.lower():  # el modelo se abstuvo
-        return {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
+    abstencion = _abstencion()
+    if abstencion[:30].lower() in texto.lower():  # el modelo se abstuvo
+        return {"respuesta": abstencion, "citas": [], "con_respaldo": False}
     return {"respuesta": texto, "citas": citas, "con_respaldo": True}
 
 
@@ -166,7 +165,7 @@ def _prompt(pregunta, hits):
     return f"""Eres el asistente de Practicum de la UTPL. Responde SOLO usando
 el contexto que sigue. Si el dato exacto no esta en el contexto, contesta
 EXACTAMENTE esto y nada mas:
-{ABSTENCION}
+{_abstencion()}
 
 Si tienes la respuesta, redactala breve y clara en espanol, y al final agrega
 (Fuente: archivo, pag. X).
@@ -197,7 +196,7 @@ relevante, estructura la respuesta en dos lineas asi:
   En {curso}: <lo que dice el material del curso>
 Si solo uno de los dos aplica, responde directo sin esa estructura. Si el dato
 no esta en ningun contexto, responde EXACTAMENTE esto y nada mas:
-{ABSTENCION}
+{_abstencion()}
 
 Al final agrega (Fuente: archivo, pag. X).
 
@@ -210,7 +209,7 @@ MODOS = ("general", "curso", "ambos")
 def _buscar(q, carrera, curso=None):
     """Busca en UN ambito (global de la carrera, o un curso) y aplica el umbral."""
     scope = f"{carrera}|curso:{curso}" if curso else f"{carrera}|global"
-    return _bajo_umbral(vectorstore.buscar(q, k=TOP_K, filtro={"scope": scope}))
+    return _bajo_umbral(vectorstore.buscar(q, k=parametros.obtener("top_k"), filtro={"scope": scope}))
 
 
 def modo_efectivo(curso, modo):
@@ -255,7 +254,7 @@ def responder(pregunta, carrera, curso=None, historial=None, modo=None):
     del_curso = _buscar(q, carrera, curso) if modo in ("curso", "ambos") else []
 
     if not generales and not del_curso:              # nada relevante -> abstencion
-        r = {"respuesta": ABSTENCION, "citas": [], "con_respaldo": False}
+        r = {"respuesta": _abstencion(), "citas": [], "con_respaldo": False}
     elif generales and del_curso:                    # ambos aportan -> distinguir
         texto = llm.generar(_prompt_doble(q, generales, del_curso, curso))
         # citas: dos del curso (mas especificas) y luego las generales, para

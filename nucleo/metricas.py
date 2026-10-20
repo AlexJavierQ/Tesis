@@ -14,7 +14,7 @@ el panel nunca muestra quien pregunto que.
 Uso: la API registra cada consulta con `registrar(...)` y la pestana de
 metricas llama `resumen(listar(...))`.
 """
-from nucleo import bd
+from nucleo import bd, parametros
 
 
 def registrar(pregunta, con_respaldo, carrera, curso=None, modo="general", usuario=None):
@@ -57,7 +57,7 @@ def listar(carrera=None, curso=None):
 # necesito" ~ "cual es el total de horas" = 0.73) sin mezclar temas distintos
 # ("formato del informe" vs "biblioteca" = 0.35). Subirlo pierde sinonimos;
 # bajarlo mucho empieza a juntar preguntas no relacionadas.
-UMBRAL_TEMA = 0.70
+# (valor por defecto 0.70; editable en parametros: umbral_tema)
 
 
 def agrupar_por_significado(preguntas):
@@ -70,7 +70,7 @@ def agrupar_por_significado(preguntas):
     Como lo hace (algoritmo simple, tipo "bola de nieve"):
       1. Convierte cada pregunta en un vector con el modelo de embeddings.
       2. Recorre las preguntas una por una. Para cada una:
-         - si se parece (similitud >= UMBRAL_TEMA) a ALGUNA pregunta de un grupo
+         - si se parece (similitud >= umbral_tema) a ALGUNA pregunta de un grupo
            que ya existe, la mete en ese grupo;
          - si no se parece a ninguna, abre un grupo nuevo con ella.
       3. El "tema" de cada grupo es su pregunta mas frecuente.
@@ -97,12 +97,13 @@ def agrupar_por_significado(preguntas):
     # un vector por pregunta unica (ya vienen normalizados -> np.dot = coseno)
     vecs = embeddings.embed(unicas)
 
+    umbral_tema = parametros.obtener("umbral_tema")
     grupos = []  # cada grupo: {"miembros": [idx], "n": total_consultas}
     for i in range(len(unicas)):
         encontrado = None
         for g in grupos:
             # se une al grupo si se parece a ALGUNA pregunta que ya esta dentro
-            if any(float(np.dot(vecs[i], vecs[m])) >= UMBRAL_TEMA for m in g["miembros"]):
+            if any(float(np.dot(vecs[i], vecs[m])) >= umbral_tema for m in g["miembros"]):
                 encontrado = g
                 break
         if encontrado:
