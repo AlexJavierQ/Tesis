@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Bot, Plus, Trash2, Send, FileText, Sparkles, MessageSquare, BookOpen, Layers,
-  Library, TriangleAlert, CircleHelp,
+  Bot, Plus, Trash2, Send, FileText, Sparkles, MessageSquare, TriangleAlert, CircleHelp,
 } from "lucide-react";
 import { api } from "../api";
-import { Insignia, Segmentado } from "./ui";
+import { fecha } from "../formato";
+import { Insignia } from "./ui";
 
 // preguntas de ejemplo para la pantalla de bienvenida
 const SUGERENCIAS = [
@@ -14,12 +14,13 @@ const SUGERENCIAS = [
   "¿Qué nota necesito para aprobar el Prácticum?",
 ];
 
-// desde donde se busca la respuesta (rag.modo_efectivo en el backend)
-const AYUDA_MODO = {
-  general: "Se buscan solo los reglamentos generales de tu carrera.",
-  curso: "Se busca solo en el material del curso elegido.",
-  ambos: "Se buscan los dos y la respuesta separa lo general de lo propio del curso.",
-};
+// desde donde se busca la respuesta, de lo mas general a lo mas especifico
+// (posicion del deslizador -> modo que entiende el backend: rag.modo_efectivo)
+const ALCANCES = [
+  { modo: "general", texto: "Reglamento general", ayuda: "Solo los reglamentos de tu carrera." },
+  { modo: "ambos", texto: "General + curso", ayuda: "Ambos; la respuesta separa lo general de lo del curso." },
+  { modo: "curso", texto: "Solo el curso", ayuda: "Solo el material del curso elegido." },
+];
 
 /**
  * Chat con HISTORIAL persistente.
@@ -29,7 +30,7 @@ const AYUDA_MODO = {
  */
 export default function Chat({ carrera }) {
   const [cursos, setCursos] = useState([]);
-  const [modo, setModo] = useState("general");      // general | curso | ambos
+  const [nivel, setNivel] = useState(0);            // posicion del deslizador (ALCANCES)
   const [curso, setCurso] = useState("");
   const [pregunta, setPregunta] = useState("");
   const [mensajes, setMensajes] = useState([]);     // mensajes visibles
@@ -96,6 +97,7 @@ export default function Chat({ carrera }) {
     setMensajes((m) => [...m, { rol: "user", texto: q }]);
     setEsperando(true);
     try {
+      const { modo } = ALCANCES[nivel];
       const usaCurso = modo !== "general";
       const r = await api.preguntar(q, carrera, usaCurso ? curso : null, modo, convId);
       setMensajes((m) => [...m, {
@@ -112,11 +114,8 @@ export default function Chat({ carrera }) {
     }
   }
 
-  const opcionesModo = [
-    { valor: "general", texto: "Reglamento general", icono: Library },
-    { valor: "curso", texto: "Solo un curso", icono: BookOpen, deshabilitado: !cursos.length },
-    { valor: "ambos", texto: "General + curso", icono: Layers, deshabilitado: !cursos.length },
-  ];
+  const alcance = ALCANCES[nivel];
+  const sinCursos = cursos.length === 0;
 
   return (
     <div className="chat-layout">
@@ -130,11 +129,14 @@ export default function Chat({ carrera }) {
           ? <p className="vacio">Aún no tienes conversaciones guardadas.</p>
           : <ul className="lista-conversaciones">
               {conversaciones.map((co) => (
-                <li key={co.id} className={"conversacion" + (co.id === convActual ? " activa" : "")}
-                    onClick={() => abrirConversacion(co.id)}>
-                  <span className="conversacion-titulo">{co.titulo}</span>
-                  <span className="conversacion-meta">{co.mensajes} mensajes · {co.iniciada_en.slice(0, 16)}</span>
+                <li key={co.id} className={"conversacion" + (co.id === convActual ? " activa" : "")}>
+                  <button className="conversacion-abrir" onClick={() => abrirConversacion(co.id)}
+                          aria-current={co.id === convActual ? "true" : undefined}>
+                    <span className="conversacion-titulo">{co.titulo}</span>
+                    <span className="conversacion-meta">{fecha(co.iniciada_en)}</span>
+                  </button>
                   <button className="btn btn-fantasma btn-icono" title="Borrar conversación"
+                          aria-label={`Borrar la conversación «${co.titulo}»`}
                           onClick={(e) => borrarConversacion(co.id, e)}>
                     <Trash2 size={15} />
                   </button>
@@ -145,17 +147,6 @@ export default function Chat({ carrera }) {
 
       {/* ---- chat ---- */}
       <section className="chat">
-        <div className="chat-cabecera">
-          <span className="etiqueta">Responder desde</span>
-          <Segmentado opciones={opcionesModo} valor={modo} onChange={setModo} />
-          {modo !== "general" && (
-            <select value={curso} onChange={(e) => setCurso(e.target.value)} aria-label="Curso">
-              {cursos.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          )}
-          <span className="ayuda">{AYUDA_MODO[modo]}</span>
-        </div>
-
         <div className="hilo">
           <div className="hilo-interior">
             {mensajes.length === 0 && (
@@ -207,7 +198,7 @@ export default function Chat({ carrera }) {
                         <div className="citas-titulo">Fuentes</div>
                         <div className="citas-lista">
                           {m.citas.map((c, j) => (
-                            <span key={j} className="cita"><FileText size={14} />{c.fuente} · pág. {c.pagina}</span>
+                            <span key={j} className="cita"><FileText size={14} />{c.fuente}, pág. {c.pagina}</span>
                           ))}
                         </div>
                       </div>
@@ -227,13 +218,38 @@ export default function Chat({ carrera }) {
         </div>
 
         <div className="entrada">
-          <form onSubmit={(e) => { e.preventDefault(); enviar(pregunta); }}>
+          <form className="compositor" onSubmit={(e) => { e.preventDefault(); enviar(pregunta); }}>
             <input value={pregunta} onChange={(e) => setPregunta(e.target.value)}
-                   placeholder="Escribe tu pregunta sobre las prácticas…" disabled={esperando} />
-            <button type="submit" className="btn btn-primario" disabled={esperando || !pregunta.trim()}
-                    aria-label="Enviar">
-              <Send size={18} />
-            </button>
+                   placeholder="Escribe tu pregunta sobre las prácticas…" disabled={esperando}
+                   aria-label="Pregunta" />
+            <div className="compositor-pie">
+              <div className="alcance">
+                <div className="alcance-texto">
+                  <span>Buscar en</span>
+                  <strong>{alcance.texto}</strong>
+                </div>
+                <div className="deslizador" style={{ "--pos": nivel / (ALCANCES.length - 1) }}
+                     title={sinCursos ? "Tu carrera aún no tiene cursos" : alcance.ayuda}>
+                  <input type="range" min={0} max={ALCANCES.length - 1} step={1}
+                         value={nivel} disabled={sinCursos}
+                         onChange={(e) => setNivel(Number(e.target.value))}
+                         aria-label="Dónde buscar la respuesta" aria-valuetext={alcance.texto} />
+                  <div className="deslizador-marcas" aria-hidden="true"><i /><i /><i /></div>
+                </div>
+              </div>
+              {alcance.modo !== "general" && (
+                <select value={curso} onChange={(e) => setCurso(e.target.value)} aria-label="Curso">
+                  {cursos.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              <button type="submit" className="btn btn-primario" disabled={esperando || !pregunta.trim()}
+                      aria-label="Enviar pregunta">
+                <Send size={18} />
+              </button>
+              <span className="alcance-ayuda">
+                {sinCursos ? "Tu carrera aún no tiene cursos: se buscará en los reglamentos generales." : alcance.ayuda}
+              </span>
+            </div>
           </form>
         </div>
       </section>

@@ -1,39 +1,59 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, History, Power, Trash2, RotateCcw, Info, FolderOpen } from "lucide-react";
+import {
+  FileText, Upload, History, Power, Trash2, RotateCcw, FolderOpen, Library, BookOpen, GraduationCap,
+} from "lucide-react";
 import { api } from "../../api";
-import { cursosGestionables } from "./cursos";
+import { fecha, nombre, plural } from "../../formato";
 import { Encabezado, Tarjeta, Insignia, Vacio } from "../ui";
 
 /**
- * Documentos de un ambito: subir (o subir nueva version), ver versiones,
- * restaurar una version anterior, activar/desactivar y eliminar.
- * Coordinacion: reglamentos generales + cualquier curso.
- * Docente: solo sus cursos asignados.
+ * Documentos que usa el asistente, organizados por carrera.
+ *  - izquierda: indice de ambitos agrupado por carrera
+ *      coordinacion -> reglamentos generales + cada curso de sus carreras
+ *      docente      -> solo sus cursos asignados
+ *  - derecha: los documentos del ambito elegido (subir, versiones,
+ *    restaurar, activar/desactivar, eliminar)
  */
-export default function Documentos({ usuario, carrera, avisar, fallar }) {
+export default function Documentos({ usuario, avisar, fallar }) {
   const esCoord = usuario.rol === "coordinacion";
-  const [cursos, setCursos] = useState([]);
-  const [curso, setCurso] = useState("");          // "" = reglamentos generales
+  const [grupos, setGrupos] = useState([]);       // [{carrera, ambitos: [{carrera, curso}]}]
+  const [ambito, setAmbito] = useState(null);     // {carrera, curso|null}
   const [docs, setDocs] = useState([]);
-  const [versiones, setVersiones] = useState({});  // docId -> versiones (si esta abierta)
+  const [versiones, setVersiones] = useState({}); // docId -> versiones (si esta abierta)
   const [subiendo, setSubiendo] = useState(false);
   const selectorArchivo = useRef(null);
 
+  // arma el indice de ambitos segun el rol
   useEffect(() => {
-    cursosGestionables(usuario, carrera).then((cs) => {
-      setCursos(cs);
-      if (!esCoord) setCurso(cs[0] || "");          // el docente no tiene "generales"
-    }).catch((e) => fallar(e.message));
-  }, [carrera]);
+    (async () => {
+      try {
+        let lista;
+        if (esCoord) {
+          lista = await Promise.all(usuario.carreras.map(async (c) => ({
+            carrera: c,
+            ambitos: [{ carrera: c, curso: null },
+                      ...(await api.cursos(c)).map((cu) => ({ carrera: c, curso: cu }))],
+          })));
+        } else {
+          lista = usuario.carreras
+            .map((c) => ({
+              carrera: c,
+              ambitos: usuario.cursos_asignados.filter((a) => a.carrera === c),
+            }))
+            .filter((g) => g.ambitos.length);
+        }
+        setGrupos(lista);
+        setAmbito(lista[0]?.ambitos[0] || null);
+      } catch (e) { fallar(e.message); }
+    })();
+  }, []);
 
-  useEffect(() => { recargar(); }, [curso, cursos]);
-
-  const sinAmbito = !esCoord && !curso;              // docente sin cursos asignados
+  useEffect(() => { recargar(); }, [ambito]);
 
   async function recargar() {
-    if (sinAmbito) { setDocs([]); return; }
+    if (!ambito) { setDocs([]); return; }
     try {
-      setDocs(await api.documentos(carrera, curso || null));
+      setDocs(await api.documentos(ambito.carrera, ambito.curso));
       setVersiones({});
     } catch (e) { fallar(e.message); }
   }
@@ -44,7 +64,7 @@ export default function Documentos({ usuario, carrera, avisar, fallar }) {
     if (!f) return;
     setSubiendo(true);
     try {
-      const r = await api.subir(carrera, curso || null, f);
+      const r = await api.subir(ambito.carrera, ambito.curso, f);
       avisar(r.version > 1
         ? `"${r.archivo}" actualizado a la versión ${r.version}. La anterior quedó guardada.`
         : `"${r.archivo}" subido e indexado (${r.fragmentos} fragmentos).`);
@@ -93,101 +113,126 @@ export default function Documentos({ usuario, carrera, avisar, fallar }) {
     } catch (err) { fallar(err.message); }
   }
 
-  const nombreAmbito = curso ? `el curso ${curso}` : "los reglamentos generales";
+  const totalAmbitos = grupos.reduce((n, g) => n + g.ambitos.length, 0);
+  const igual = (a, b) => a && b && a.carrera === b.carrera && a.curso === b.curso;
 
-  return (
-    <>
-      <Encabezado contexto={carrera} titulo="Documentos"
-                  descripcion="Los PDF que el asistente usa para responder. Solo se usan los documentos activos.">
+  if (totalAmbitos === 0) {
+    return (
+      <>
+        <Encabezado titulo="Documentos" descripcion="Los PDF que el asistente usa para responder." />
+        <Tarjeta>
+          <Vacio icono={BookOpen} titulo="Aún no tienes cursos asignados">
+            Cuando la coordinación te asigne un curso, aquí podrás subir su material.
+          </Vacio>
+        </Tarjeta>
+      </>
+    );
+  }
+
+  const panel = ambito && (
+    <Tarjeta>
+      <div className="ambito-cabecera">
+        <div>
+          <h2>{ambito.curso || "Reglamentos generales"}</h2>
+          <p>{ambito.curso
+            ? `Material del curso en ${nombre(ambito.carrera)}. Se usa cuando el estudiante pregunta desde este curso.`
+            : `Normativa de ${nombre(ambito.carrera)}. Se usa en todas las respuestas de la carrera.`}</p>
+        </div>
         <input ref={selectorArchivo} type="file" accept="application/pdf" hidden onChange={subir} />
-        <button className="btn btn-primario" disabled={sinAmbito || subiendo}
+        <button className="btn btn-primario" disabled={subiendo}
+                title="Si ya existe un archivo con el mismo nombre, se guarda como versión nueva"
                 onClick={() => selectorArchivo.current.click()}>
           <Upload size={18} />{subiendo ? "Subiendo…" : "Subir PDF"}
         </button>
-      </Encabezado>
+      </div>
 
-      <Tarjeta titulo="Ámbito" descripcion="Elige a qué conjunto de documentos quieres agregar o revisar.">
-        {sinAmbito
-          ? <div className="nota aviso"><Info size={16} />
-              Aún no tienes cursos asignados. Pide a la coordinación que te asigne uno.</div>
-          : <div className="rejilla-campos">
-              <label className="campo">
-                <span>Ámbito</span>
-                <select value={curso} onChange={(e) => setCurso(e.target.value)}>
-                  {esCoord && <option value="">Reglamentos generales de la carrera</option>}
-                  {cursos.map((c) => <option key={c} value={c}>Curso: {c}</option>)}
-                </select>
-              </label>
-              <div className="nota"><Info size={16} />
-                <span>{curso
-                  ? "Estos documentos solo se usan cuando el estudiante pregunta desde este curso."
-                  : "Estos documentos afectan las respuestas de toda la carrera."}{" "}
-                  Si subes un PDF con un nombre que ya existe, se guarda como versión nueva.</span>
-              </div>
-            </div>}
-      </Tarjeta>
-
-      <Tarjeta titulo={`Documentos de ${nombreAmbito}`}
-               descripcion={`${docs.length} documento${docs.length === 1 ? "" : "s"}`}>
-        {docs.length === 0
-          ? <Vacio icono={FolderOpen} titulo="No hay documentos en este ámbito">
-              Usa el botón «Subir PDF» para agregar el primero.
-            </Vacio>
-          : <ul className="filas">
-              {docs.map((d) => (
-                <li key={d.id}>
-                  <div className={"fila" + (d.activo ? "" : " apagada")}>
-                    <div className="fila-icono"><FileText size={20} /></div>
-                    <div className="fila-cuerpo">
-                      <div className="fila-titulo">{d.nombre}</div>
-                      <div className="fila-meta">
-                        <span>Versión {d.version}</span>·<span>{d.fragmentos} fragmentos</span>·
-                        <span>Actualizado {d.subido_en.slice(0, 16)}</span>
-                      </div>
-                    </div>
-                    {d.activo
-                      ? <Insignia tipo="exito">Activo</Insignia>
-                      : <Insignia>Desactivado</Insignia>}
-                    <div className="fila-acciones-derecha">
-                      <button className="btn btn-secundario btn-chico" onClick={() => verVersiones(d)}>
-                        <History size={15} />Versiones ({d.versiones})
-                      </button>
-                      <button className="btn btn-fantasma btn-chico" onClick={() => cambiarEstado(d)}>
-                        <Power size={15} />{d.activo ? "Desactivar" : "Activar"}
-                      </button>
-                      <button className="btn btn-peligro btn-icono" title="Eliminar documento"
-                              onClick={() => eliminar(d)}>
-                        <Trash2 size={16} />
-                      </button>
+      {docs.length === 0
+        ? <Vacio icono={FolderOpen} titulo="Todavía no hay documentos aquí">
+            Sube un PDF. Si más adelante subes otro con el mismo nombre, se guarda como versión nueva.
+          </Vacio>
+        : <ul className="filas">
+            {docs.map((d) => (
+              <li key={d.id}>
+                <div className={"fila" + (d.activo ? "" : " apagada")}>
+                  <div className="fila-icono"><FileText size={20} /></div>
+                  <div className="fila-cuerpo">
+                    <div className="fila-titulo">{d.nombre}</div>
+                    <div className="fila-meta">
+                      <span>Versión {d.version}</span>
+                      <span>{plural(d.fragmentos, "fragmento")}</span>
+                      <span>Actualizado el {fecha(d.subido_en)}</span>
                     </div>
                   </div>
+                  {d.activo ? <Insignia tipo="exito">Activo</Insignia> : <Insignia>Desactivado</Insignia>}
+                  <div className="fila-acciones-derecha">
+                    <button className="btn btn-secundario btn-chico" onClick={() => verVersiones(d)}
+                            aria-expanded={Boolean(versiones[d.id])}>
+                      <History size={15} />Versiones ({d.versiones})
+                    </button>
+                    <button className="btn btn-fantasma btn-chico" onClick={() => cambiarEstado(d)}>
+                      <Power size={15} />{d.activo ? "Desactivar" : "Activar"}
+                    </button>
+                    <button className="btn btn-peligro btn-icono" title="Eliminar documento"
+                            aria-label={`Eliminar ${d.nombre}`} onClick={() => eliminar(d)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
 
-                  {versiones[d.id] && (
-                    <div className="subpanel">
-                      <ul className="filas">
-                        {versiones[d.id].map((v) => (
-                          <li key={v.numero} className="fila">
-                            <div className="fila-cuerpo">
-                              <div className="fila-titulo">Versión {v.numero}</div>
-                              <div className="fila-meta">
-                                <span>{v.subido_en.slice(0, 16)}</span>·<span>subida por {v.subido_por}</span>
-                                {v.restaurada_de && <>·<span>restaurada desde la versión {v.restaurada_de}</span></>}
-                              </div>
+                {versiones[d.id] && (
+                  <div className="subpanel">
+                    <ul className="filas">
+                      {versiones[d.id].map((v) => (
+                        <li key={v.numero} className="fila">
+                          <div className="fila-cuerpo">
+                            <div className="fila-titulo">Versión {v.numero}</div>
+                            <div className="fila-meta">
+                              <span>{fecha(v.subido_en)}</span>
+                              <span>Subida por {v.subido_por}</span>
+                              {v.restaurada_de && <span>Copia de la versión {v.restaurada_de}</span>}
                             </div>
-                            {v.numero === d.version
-                              ? <Insignia tipo="primario">Vigente</Insignia>
-                              : <button className="btn btn-secundario btn-chico" onClick={() => restaurar(d, v.numero)}>
-                                  <RotateCcw size={15} />Restaurar
-                                </button>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </li>
+                          </div>
+                          {v.numero === d.version
+                            ? <Insignia tipo="primario">Vigente</Insignia>
+                            : <button className="btn btn-secundario btn-chico" onClick={() => restaurar(d, v.numero)}>
+                                <RotateCcw size={15} />Restaurar
+                              </button>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>}
+    </Tarjeta>
+  );
+
+  return (
+    <>
+      <Encabezado titulo="Documentos"
+                  descripcion="Los PDF que el asistente usa para responder. Solo los documentos activos cuentan." />
+      {totalAmbitos === 1
+        ? panel
+        : <div className="con-indice">
+            <nav className="indice" aria-label="Ámbitos de documentos">
+              {grupos.map((g) => (
+                <div key={g.carrera} className="indice-grupo">
+                  <div className="indice-titulo"><GraduationCap size={15} />{nombre(g.carrera)}</div>
+                  {g.ambitos.map((a) => (
+                    <button key={a.curso || "general"}
+                            className={"indice-item" + (igual(a, ambito) ? " activo" : "")}
+                            aria-current={igual(a, ambito) ? "true" : undefined}
+                            onClick={() => setAmbito(a)}>
+                      {a.curso ? <BookOpen size={17} /> : <Library size={17} />}
+                      {a.curso || "Reglamentos generales"}
+                    </button>
+                  ))}
+                </div>
               ))}
-            </ul>}
-      </Tarjeta>
+            </nav>
+            {panel}
+          </div>}
     </>
   );
 }

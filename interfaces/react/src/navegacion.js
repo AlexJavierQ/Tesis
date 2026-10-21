@@ -1,5 +1,5 @@
 import {
-  MessageSquare, FileText, Building2, ChartColumn, Users, SlidersHorizontal, History,
+  MessageSquare, FileText, BookOpen, ChartColumn, Users, SlidersHorizontal, History, Landmark,
 } from "lucide-react";
 
 /**
@@ -9,9 +9,10 @@ import {
  */
 const CHAT = { clave: "chat", texto: "Chat", icono: MessageSquare };
 const DOCUMENTOS = { clave: "documentos", texto: "Documentos", icono: FileText };
-const ESTRUCTURA = { clave: "estructura", texto: "Estructura académica", icono: Building2 };
+const CURSOS = { clave: "cursos", texto: "Cursos y docentes", icono: BookOpen };
 const METRICAS = { clave: "metricas", texto: "Métricas", icono: ChartColumn };
 const USUARIOS = { clave: "usuarios", texto: "Usuarios", icono: Users };
+const INSTITUCION = { clave: "institucion", texto: "Facultades y carreras", icono: Landmark };
 const CONFIGURACION = { clave: "configuracion", texto: "Configuración", icono: SlidersHorizontal };
 const REGISTRO = { clave: "registro", texto: "Registro de actividad", icono: History };
 
@@ -25,12 +26,12 @@ export const MENU = {
   ],
   coordinacion: [
     { titulo: "Asistente", secciones: [CHAT] },
-    { titulo: "Gestión académica", secciones: [DOCUMENTOS, ESTRUCTURA, METRICAS] },
+    { titulo: "Mis carreras", secciones: [DOCUMENTOS, CURSOS, METRICAS] },
     { titulo: "Personas", secciones: [USUARIOS] },
   ],
   administrador: [
+    { titulo: "Institución", secciones: [INSTITUCION, USUARIOS] },
     { titulo: "Sistema", secciones: [CONFIGURACION, REGISTRO] },
-    { titulo: "Personas", secciones: [USUARIOS] },
   ],
 };
 

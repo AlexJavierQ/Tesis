@@ -6,7 +6,8 @@ import { Notificaciones } from "./componentes/ui";
 import Login from "./componentes/Login";
 import Chat from "./componentes/Chat";
 import Documentos from "./componentes/paneles/Documentos";
-import Estructura from "./componentes/paneles/Estructura";
+import Cursos from "./componentes/paneles/Cursos";
+import Institucion from "./componentes/paneles/Institucion";
 import Metricas from "./componentes/paneles/Metricas";
 import Usuarios from "./componentes/paneles/Usuarios";
 import Configuracion from "./componentes/paneles/Configuracion";
@@ -16,7 +17,8 @@ import "./estilos.css";
 // que componente muestra cada seccion del menu
 const PANTALLAS = {
   documentos: Documentos,
-  estructura: Estructura,
+  cursos: Cursos,
+  institucion: Institucion,
   metricas: Metricas,
   usuarios: Usuarios,
   configuracion: Configuracion,
@@ -116,7 +118,7 @@ export default function App() {
             <div className="avatar">{iniciales}</div>
             <div>
               <strong>{usuario.nombre}</strong>
-              <span>{NOMBRE_ROL[usuario.rol]}{carrera && usuario.carreras.length === 1 ? ` · ${carrera}` : ""}</span>
+              <span>{NOMBRE_ROL[usuario.rol]}</span>
             </div>
           </div>
           <button className="btn-salir" onClick={cerrarSesion}>
@@ -127,10 +129,10 @@ export default function App() {
 
       <main className="principal">
         {seccion === "chat"
-          ? <Chat key={carrera} carrera={carrera} />
+          ? <Chat key={usuario.usuario + carrera} carrera={carrera} />
           : Pantalla && (
               <div className="contenedor">
-                <Pantalla key={seccion + carrera} usuario={usuario} carrera={carrera}
+                <Pantalla key={usuario.usuario + seccion + carrera} usuario={usuario} carrera={carrera}
                           refrescarUsuario={refrescarUsuario}
                           avisar={(t) => notificar("exito", t)}
                           fallar={(t) => notificar("error", t)} />

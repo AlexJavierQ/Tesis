@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { RotateCcw, Search, History } from "lucide-react";
 import { api } from "../../api";
 import { Encabezado, Tarjeta, Insignia, Segmentado, Vacio } from "../ui";
+import { fecha } from "../../formato";
 
 // cada accion de la bitacora: texto legible, categoria y color de la insignia
 const ACCIONES = {
@@ -54,7 +55,7 @@ export default function Registro({ fallar }) {
 
   return (
     <>
-      <Encabezado contexto="Sistema" titulo="Registro de actividad"
+      <Encabezado titulo="Registro de actividad"
                   descripcion="Quién hizo qué y cuándo: accesos, cambios de usuarios, de estructura, de documentos y de configuración.">
         <button className="btn btn-secundario" onClick={cargar}><RotateCcw size={16} />Actualizar</button>
       </Encabezado>
@@ -64,9 +65,9 @@ export default function Registro({ fallar }) {
           <div className="buscador">
             <Search size={17} />
             <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-                   placeholder="Buscar por usuario o detalle" />
+                   placeholder="Buscar por usuario o detalle" aria-label="Buscar en el registro" />
           </div>
-          <Segmentado opciones={FILTROS} valor={categoria} onChange={setCategoria} />
+          <Segmentado opciones={FILTROS} valor={categoria} onChange={setCategoria} etiqueta="Filtrar por categoría" />
         </div>
 
         {visibles.length === 0
@@ -81,7 +82,7 @@ export default function Registro({ fallar }) {
                     const [nombre, , tipo] = ACCIONES[l.accion] || [l.accion];
                     return (
                       <tr key={i}>
-                        <td className="secundario" style={{ whiteSpace: "nowrap" }}>{l.fecha}</td>
+                        <td className="secundario numero" style={{ whiteSpace: "nowrap" }}>{fecha(l.fecha)}</td>
                         <td><strong>{l.usuario}</strong></td>
                         <td><Insignia tipo={tipo}>{nombre}</Insignia></td>
                         <td className="secundario">{l.detalle || "—"}</td>

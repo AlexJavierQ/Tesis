@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, Cpu, Brain, MessageSquare, Lock, ChartColumn, Save, Undo2, Info } from "lucide-react";
 import { api } from "../../api";
 import { Encabezado, Tarjeta } from "../ui";
+import { fecha } from "../../formato";
 
 // icono de cada area (las areas y sus parametros los define el backend)
 const ICONO_AREA = {
@@ -45,15 +46,16 @@ export default function Configuracion({ avisar, fallar }) {
 
   return (
     <>
-      <Encabezado contexto="Sistema" titulo="Configuración"
+      <Encabezado titulo="Configuración"
                   descripcion="Ajustes del asistente que antes estaban fijos en el código. La clave de acceso al modelo no se gestiona aquí: es un secreto y se guarda fuera de la base de datos." />
 
-      <div className="config">
-        <nav className="config-areas">
+      <div className="con-indice">
+        <nav className="indice" aria-label="Áreas de configuración">
           {areas.map((a) => {
             const Icono = ICONO_AREA[a.clave] || Info;
             return (
-              <button key={a.clave} className={"area-boton" + (a.clave === areaActiva ? " activo" : "")}
+              <button key={a.clave} className={"indice-item" + (a.clave === areaActiva ? " activo" : "")}
+                      aria-current={a.clave === areaActiva ? "true" : undefined}
                       onClick={() => setAreaActiva(a.clave)}>
                 <Icono size={18} />{a.titulo}
               </button>
@@ -65,17 +67,20 @@ export default function Configuracion({ avisar, fallar }) {
           <Tarjeta titulo={area.titulo} descripcion={area.descripcion}>
             {area.parametros.map((p) => {
               const cambiado = borrador[p.clave] !== p.valor;
-              const esTextoLargo = p.tipo === "texto" && !p.opciones.length;
+              const esTextoLargo = p.clave.startsWith("mensaje_");
               return (
                 <div key={p.clave} className={"parametro" + (esTextoLargo ? " parametro-ancho" : "")}>
                   <div>
                     <h3>{p.etiqueta}</h3>
                     <p className="descripcion">{p.descripcion}</p>
-                    <p className="detalle">
-                      {p.tipo !== "texto" && <>Rango permitido: {p.minimo} a {p.maximo} · </>}
-                      Valor por defecto: {p.defecto.length > 40 ? "texto original" : p.defecto} ·
-                      Último cambio: {p.actualizado_en.slice(0, 16)} ({p.actualizado_por})
-                    </p>
+                    <dl>
+                      {p.tipo !== "texto" && <div><dt>Rango</dt><dd>{p.minimo} a {p.maximo}</dd></div>}
+                      {p.defecto.length <= 40 && <div><dt>Por defecto</dt><dd>{p.defecto}</dd></div>}
+                      <div>
+                        <dt>Último cambio</dt>
+                        <dd>{fecha(p.actualizado_en)}{p.actualizado_por !== "—" && `, por ${p.actualizado_por}`}</dd>
+                      </div>
+                    </dl>
                   </div>
                   <div className="parametro-control">
                     {p.opciones.length > 0

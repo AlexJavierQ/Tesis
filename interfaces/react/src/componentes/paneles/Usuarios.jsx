@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { UserPlus, Search, KeyRound, Trash2, Users } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { UserPlus, Search, KeyRound, Trash2, Users, Pencil, Check, X } from "lucide-react";
 import { api } from "../../api";
 import { NOMBRE_ROL } from "../../navegacion";
-import { Encabezado, Tarjeta, Insignia, Segmentado, Modal, Vacio } from "../ui";
+import { nombre } from "../../formato";
+import { Encabezado, Tarjeta, Insignia, Segmentado, PanelFormulario, Vacio } from "../ui";
 
 /**
  * Gestion de usuarios.
- *  - administrador: todos los usuarios, cualquier rol y carrera.
+ *  - administrador: todos los usuarios, cualquier rol y carrera (asi asigna
+ *    a cada coordinador sus carreras).
  *  - coordinacion: solo estudiantes y docentes de SUS carreras.
  * (La API aplica las mismas reglas; aqui solo se muestran las opciones validas.)
  */
@@ -21,6 +23,8 @@ export default function Usuarios({ usuario, carrera, avisar, fallar }) {
   const [busqueda, setBusqueda] = useState("");
   const [filtroRol, setFiltroRol] = useState("todos");
   const [creando, setCreando] = useState(false);
+  const [editando, setEditando] = useState(null);     // usuario cuyas carreras se editan
+  const [borrador, setBorrador] = useState([]);
 
   useEffect(() => {
     cargar();
@@ -60,6 +64,12 @@ export default function Usuarios({ usuario, carrera, avisar, fallar }) {
     hacer(() => api.usuarios.borrar(u.usuario), `${u.nombre} eliminado.`);
   }
 
+  async function guardarCarreras(u) {
+    const ok = await hacer(() => api.usuarios.actualizar(u.usuario, { carreras: borrador }),
+                           `Carreras de ${u.nombre} actualizadas.`);
+    if (ok) setEditando(null);
+  }
+
   const texto = busqueda.trim().toLowerCase();
   const visibles = usuarios.filter((u) =>
     (filtroRol === "todos" || u.rol === filtroRol)
@@ -70,74 +80,16 @@ export default function Usuarios({ usuario, carrera, avisar, fallar }) {
 
   return (
     <>
-      <Encabezado contexto={esAdmin ? "Sistema" : carrera} titulo="Usuarios"
+      <Encabezado titulo="Usuarios"
                   descripcion={esAdmin
-                    ? "Todas las cuentas de la plataforma, incluidos coordinadores y administradores."
+                    ? "Todas las cuentas de la plataforma. Las carreras de un coordinador son las que coordina."
                     : "Estudiantes y docentes de tus carreras."}>
-        <button className="btn btn-primario" onClick={() => setCreando(true)}>
-          <UserPlus size={18} />Nuevo usuario
-        </button>
+        {!creando && (
+          <button className="btn btn-primario" onClick={() => setCreando(true)}>
+            <UserPlus size={18} />Nuevo usuario
+          </button>
+        )}
       </Encabezado>
-
-      <Tarjeta>
-        <div className="herramientas">
-          <div className="buscador">
-            <Search size={17} />
-            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-                   placeholder="Buscar por nombre, usuario o correo" />
-          </div>
-          <Segmentado opciones={filtros} valor={filtroRol} onChange={setFiltroRol} />
-        </div>
-
-        {visibles.length === 0
-          ? <Vacio icono={Users} titulo="No hay usuarios que coincidan" />
-          : <div className="tabla-envoltura">
-              <table className="tabla">
-                <thead>
-                  <tr><th>Persona</th><th>Rol</th><th>Carreras</th><th>Estado</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {visibles.map((u) => {
-                    const soyYo = u.usuario === usuario.usuario;
-                    return (
-                      <tr key={u.usuario}>
-                        <td>
-                          <strong>{u.nombre}</strong>{soyYo && <> <Insignia tipo="primario">Tú</Insignia></>}
-                          <div className="secundario">{u.usuario} · {u.correo}</div>
-                        </td>
-                        <td>
-                          <select value={u.rol} disabled={soyYo} aria-label="Rol"
-                                  onChange={(e) => cambiarRol(u, e.target.value)}>
-                            {(rolesPermitidos.includes(u.rol) ? rolesPermitidos : [u.rol]).map((r) =>
-                              <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
-                          </select>
-                        </td>
-                        <td>{u.carreras.length
-                          ? <div className="fila-meta">{u.carreras.map((c) => <Insignia key={c}>{c}</Insignia>)}</div>
-                          : <span className="secundario">—</span>}</td>
-                        <td>
-                          <button className="btn btn-fantasma btn-chico" disabled={soyYo}
-                                  title={u.activo ? "Clic para desactivar" : "Clic para activar"}
-                                  onClick={() => hacer(() => api.usuarios.actualizar(u.usuario, { activo: !u.activo }),
-                                    `${u.nombre} ${u.activo ? "desactivado: ya no puede iniciar sesión" : "activado"}.`)}>
-                            {u.activo ? <Insignia tipo="exito">Activo</Insignia> : <Insignia>Inactivo</Insignia>}
-                          </button>
-                        </td>
-                        <td>
-                          <div className="fila-acciones-derecha">
-                            <button className="btn btn-fantasma btn-icono" title="Cambiar contraseña"
-                                    onClick={() => cambiarPassword(u)}><KeyRound size={16} /></button>
-                            <button className="btn btn-peligro btn-icono" title="Eliminar usuario"
-                                    disabled={soyYo} onClick={() => borrar(u)}><Trash2 size={16} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>}
-      </Tarjeta>
 
       {creando && (
         <NuevoUsuario roles={rolesPermitidos} carreras={carrerasPosibles} carreraInicial={carrera}
@@ -147,11 +99,117 @@ export default function Usuarios({ usuario, carrera, avisar, fallar }) {
                         if (ok) setCreando(false);
                       }} />
       )}
+
+      <Tarjeta>
+        <div className="herramientas">
+          <div className="buscador">
+            <Search size={17} />
+            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+                   placeholder="Buscar por nombre, usuario o correo" aria-label="Buscar usuarios" />
+          </div>
+          <Segmentado opciones={filtros} valor={filtroRol} onChange={setFiltroRol} etiqueta="Filtrar por rol" />
+        </div>
+
+        {visibles.length === 0
+          ? <Vacio icono={Users} titulo="No hay usuarios que coincidan">Prueba con otra búsqueda o filtro.</Vacio>
+          : <div className="tabla-envoltura">
+              <table className="tabla">
+                <thead>
+                  <tr><th>Persona</th><th>Rol</th><th>Carreras</th><th>Estado</th><th><span className="oculto">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                  {visibles.map((u) => {
+                    const soyYo = u.usuario === usuario.usuario;
+                    const puedeCarreras = u.rol !== "administrador";
+                    return (
+                      <Fragment key={u.usuario}>
+                      <tr>
+                        <td>
+                          <strong>{u.nombre}</strong>{soyYo && <> <Insignia tipo="primario">Tú</Insignia></>}
+                          <div className="secundario">{u.correo}</div>
+                          <div className="secundario">Usuario: {u.usuario}</div>
+                        </td>
+                        <td>
+                          <select value={u.rol} disabled={soyYo} aria-label={`Rol de ${u.nombre}`}
+                                  onChange={(e) => cambiarRol(u, e.target.value)}>
+                            {(rolesPermitidos.includes(u.rol) ? rolesPermitidos : [u.rol]).map((r) =>
+                              <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
+                          </select>
+                        </td>
+                        <td>
+                          <div className="fila-meta">
+                            {u.carreras.length
+                              ? u.carreras.map((c) => <Insignia key={c}>{nombre(c)}</Insignia>)
+                              : <span className="secundario">Ninguna</span>}
+                            {puedeCarreras && editando !== u.usuario && (
+                              <button className="btn btn-fantasma btn-icono" title="Editar carreras"
+                                      aria-label={`Editar carreras de ${u.nombre}`}
+                                      onClick={() => { setEditando(u.usuario); setBorrador(u.carreras); }}>
+                                <Pencil size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <button className="btn btn-fantasma btn-chico" disabled={soyYo}
+                                  title={u.activo ? "Desactivar: ya no podrá iniciar sesión" : "Activar"}
+                                  onClick={() => hacer(() => api.usuarios.actualizar(u.usuario, { activo: !u.activo }),
+                                    `${u.nombre} ${u.activo ? "desactivado: ya no puede iniciar sesión" : "activado"}.`)}>
+                            {u.activo ? <Insignia tipo="exito">Activo</Insignia> : <Insignia>Inactivo</Insignia>}
+                          </button>
+                        </td>
+                        <td>
+                          <div className="fila-acciones-derecha">
+                            <button className="btn btn-fantasma btn-icono" title="Cambiar contraseña"
+                                    aria-label={`Cambiar contraseña de ${u.nombre}`}
+                                    onClick={() => cambiarPassword(u)}><KeyRound size={16} /></button>
+                            <button className="btn btn-peligro btn-icono" title="Eliminar usuario"
+                                    aria-label={`Eliminar a ${u.nombre}`}
+                                    disabled={soyYo} onClick={() => borrar(u)}><Trash2 size={16} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                      {editando === u.usuario && (
+                        <tr className="fila-edicion">
+                          <td colSpan={5}>
+                            <div className="campo">
+                              <span>Carreras de {u.nombre}</span>
+                              <div className="casillas">
+                                {carrerasPosibles.map((c) => (
+                                  <label key={c} className="casilla">
+                                    <input type="checkbox" checked={borrador.includes(c)}
+                                           onChange={() => setBorrador(borrador.includes(c)
+                                             ? borrador.filter((x) => x !== c) : [...borrador, c])} />
+                                    {nombre(c)}
+                                  </label>
+                                ))}
+                              </div>
+                              {u.rol === "coordinacion" && <small>Son las carreras que esta persona coordina.</small>}
+                            </div>
+                            <div className="fila-acciones derecha" style={{ marginTop: 14 }}>
+                              <button className="btn btn-fantasma btn-chico" onClick={() => setEditando(null)}>
+                                <X size={15} />Cancelar
+                              </button>
+                              <button className="btn btn-primario btn-chico" disabled={!borrador.length}
+                                      onClick={() => guardarCarreras(u)}>
+                                <Check size={15} />Guardar carreras
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>}
+      </Tarjeta>
     </>
   );
 }
 
-/** Formulario de alta, en una ventana aparte para no saturar la pantalla. */
+/** Formulario de alta, desplegado en la pagina con espacio para cada campo. */
 function NuevoUsuario({ roles, carreras, carreraInicial, onCerrar, onCrear }) {
   const [d, setD] = useState({
     usuario: "", nombre: "", correo: "", password: "",
@@ -159,47 +217,47 @@ function NuevoUsuario({ roles, carreras, carreraInicial, onCerrar, onCrear }) {
   });
   const cambiar = (campo) => (e) => setD({ ...d, [campo]: e.target.value });
   const necesitaCarrera = d.rol !== "administrador";
-  const valido = d.usuario.trim() && d.nombre.trim() && d.correo.trim()
-    && d.password.length >= 6 && (!necesitaCarrera || d.carreras.length > 0);
+  const valido = Boolean(d.usuario.trim() && d.nombre.trim() && d.correo.trim()
+    && d.password.length >= 6 && (!necesitaCarrera || d.carreras.length > 0));
 
   function marcar(c) {
     setD({ ...d, carreras: d.carreras.includes(c) ? d.carreras.filter((x) => x !== c) : [...d.carreras, c] });
   }
 
   return (
-    <Modal titulo="Nuevo usuario" descripcion="La persona podrá entrar con su usuario o su correo."
-           onCerrar={onCerrar}
-           pie={<>
-             <button className="btn btn-fantasma" onClick={onCerrar}>Cancelar</button>
-             <button className="btn btn-primario" disabled={!valido} onClick={() => onCrear(d)}>
-               <UserPlus size={18} />Crear usuario
-             </button>
-           </>}>
+    <PanelFormulario titulo="Nuevo usuario" textoEnviar="Crear usuario" valido={valido}
+                     descripcion="La persona podrá entrar con su usuario o con su correo."
+                     onCancelar={onCerrar} onEnviar={() => onCrear(d)}>
       <div className="rejilla-campos">
         <label className="campo"><span>Nombre completo</span>
-          <input value={d.nombre} onChange={cambiar("nombre")} autoFocus /></label>
+          <input value={d.nombre} onChange={cambiar("nombre")} autoFocus autoComplete="off" /></label>
         <label className="campo"><span>Correo</span>
-          <input type="email" value={d.correo} onChange={cambiar("correo")} placeholder="nombre@utpl.edu.ec" /></label>
+          <input type="email" value={d.correo} onChange={cambiar("correo")}
+                 placeholder="nombre@utpl.edu.ec" autoComplete="off" spellCheck={false} /></label>
         <label className="campo"><span>Usuario</span>
-          <input value={d.usuario} onChange={cambiar("usuario")} placeholder="ej: jperez" /></label>
-        <label className="campo"><span>Contraseña</span>
-          <input type="password" value={d.password} onChange={cambiar("password")} />
+          <input value={d.usuario} onChange={cambiar("usuario")} placeholder="Por ejemplo, jperez"
+                 autoComplete="off" spellCheck={false} /></label>
+        <label className="campo"><span>Contraseña inicial</span>
+          <input type="password" value={d.password} onChange={cambiar("password")} autoComplete="new-password" />
           <small>Mínimo 6 caracteres.</small></label>
         <label className="campo"><span>Rol</span>
           <select value={d.rol} onChange={cambiar("rol")}>
             {roles.map((r) => <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
           </select></label>
       </div>
-      <div className="campo" style={{ marginTop: 20 }}>
-        <span>Carreras{necesitaCarrera ? "" : " (opcional para administradores)"}</span>
+      <div className="campo" style={{ marginTop: 22 }}>
+        <span>Carreras</span>
         <div className="casillas">
           {carreras.map((c) => (
             <label key={c} className="casilla">
-              <input type="checkbox" checked={d.carreras.includes(c)} onChange={() => marcar(c)} />{c}
+              <input type="checkbox" checked={d.carreras.includes(c)} onChange={() => marcar(c)} />{nombre(c)}
             </label>
           ))}
         </div>
+        <small>{necesitaCarrera
+          ? "Elige al menos una. Para coordinación, son las carreras que coordinará."
+          : "El administrador no necesita carreras."}</small>
       </div>
-    </Modal>
+    </PanelFormulario>
   );
 }

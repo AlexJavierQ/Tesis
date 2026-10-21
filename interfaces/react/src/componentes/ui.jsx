@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { CircleCheck, CircleX, X } from "lucide-react";
 
 /**
@@ -7,11 +6,10 @@ import { CircleCheck, CircleX, X } from "lucide-react";
  */
 
 /** Titulo de la pagina, con descripcion y botones a la derecha. */
-export function Encabezado({ contexto, titulo, descripcion, children }) {
+export function Encabezado({ titulo, descripcion, children }) {
   return (
     <header className="encabezado">
       <div>
-        {contexto && <div className="encabezado-contexto">{contexto}</div>}
         <h1>{titulo}</h1>
         {descripcion && <p>{descripcion}</p>}
       </div>
@@ -38,12 +36,32 @@ export function Tarjeta({ titulo, descripcion, acciones, children, className = "
   );
 }
 
+/**
+ * Formulario que se despliega dentro de la pagina (en vez de una ventana
+ * emergente): da espacio a los campos y no tapa el contexto.
+ */
+export function PanelFormulario({ titulo, descripcion, onCancelar, onEnviar, textoEnviar, valido, children }) {
+  return (
+    <form className="panel-formulario"
+          onSubmit={(e) => { e.preventDefault(); if (valido) onEnviar(); }}
+          onKeyDown={(e) => e.key === "Escape" && onCancelar()}>
+      <h2>{titulo}</h2>
+      {descripcion && <p>{descripcion}</p>}
+      {children}
+      <div className="pie">
+        <button type="button" className="btn btn-fantasma" onClick={onCancelar}>Cancelar</button>
+        <button type="submit" className="btn btn-primario" disabled={!valido}>{textoEnviar}</button>
+      </div>
+    </form>
+  );
+}
+
 /** Etiqueta de color. tipo: primario | exito | peligro | aviso | (neutro). */
 export function Insignia({ tipo, children }) {
   return <span className={"insignia" + (tipo ? " insignia-" + tipo : "")}>{children}</span>;
 }
 
-/** Mensaje para cuando una lista esta vacia. */
+/** Mensaje para cuando una lista esta vacia: dice que pasa y que hacer. */
 export function Vacio({ icono: Icono, titulo, children }) {
   return (
     <div className="vacio">
@@ -54,44 +72,16 @@ export function Vacio({ icono: Icono, titulo, children }) {
   );
 }
 
-/** Elegir una opcion entre pocas: [{valor, texto, icono, deshabilitado}]. */
-export function Segmentado({ opciones, valor, onChange }) {
+/** Elegir una opcion entre pocas (filtros): [{valor, texto}]. */
+export function Segmentado({ opciones, valor, onChange, etiqueta }) {
   return (
-    <div className="segmentado" role="tablist">
-      {opciones.map(({ valor: v, texto, icono: Icono, deshabilitado }) => (
-        <button key={v} type="button" role="tab" aria-selected={v === valor}
-                className={v === valor ? "activo" : ""} disabled={deshabilitado}
-                onClick={() => onChange(v)}>
-          {Icono && <Icono size={16} />}{texto}
+    <div className="segmentado" role="radiogroup" aria-label={etiqueta}>
+      {opciones.map(({ valor: v, texto }) => (
+        <button key={v} type="button" role="radio" aria-checked={v === valor}
+                className={v === valor ? "activo" : ""} onClick={() => onChange(v)}>
+          {texto}
         </button>
       ))}
-    </div>
-  );
-}
-
-/** Ventana emergente. Se cierra con la X, con Escape o haciendo clic fuera. */
-export function Modal({ titulo, descripcion, onCerrar, children, pie }) {
-  useEffect(() => {
-    const alPresionar = (e) => e.key === "Escape" && onCerrar();
-    window.addEventListener("keydown", alPresionar);
-    return () => window.removeEventListener("keydown", alPresionar);
-  }, [onCerrar]);
-
-  return (
-    <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={titulo}>
-        <div className="modal-cabecera">
-          <div>
-            <h2>{titulo}</h2>
-            {descripcion && <p>{descripcion}</p>}
-          </div>
-          <button className="btn btn-fantasma btn-icono" onClick={onCerrar} aria-label="Cerrar">
-            <X size={18} />
-          </button>
-        </div>
-        {children}
-        {pie && <div className="modal-pie">{pie}</div>}
-      </div>
     </div>
   );
 }
@@ -101,10 +91,10 @@ export function Notificaciones({ lista, onCerrar }) {
   return (
     <div className="notificaciones" aria-live="polite">
       {lista.map((n) => (
-        <div key={n.id} className={"notificacion " + n.tipo}>
+        <div key={n.id} className={"notificacion " + n.tipo} role={n.tipo === "error" ? "alert" : "status"}>
           {n.tipo === "error" ? <CircleX size={18} /> : <CircleCheck size={18} />}
           <p>{n.texto}</p>
-          <button onClick={() => onCerrar(n.id)} aria-label="Cerrar"><X size={16} /></button>
+          <button onClick={() => onCerrar(n.id)} aria-label="Cerrar aviso"><X size={16} /></button>
         </div>
       ))}
     </div>

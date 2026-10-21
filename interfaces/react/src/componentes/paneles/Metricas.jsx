@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { MessagesSquare, CircleCheck, TriangleAlert, RotateCcw, ChartColumn, TrendingUp } from "lucide-react";
+import { TriangleAlert, RotateCcw, ChartColumn, CircleCheck } from "lucide-react";
 import { api } from "../../api";
-import { cursosGestionables } from "./cursos";
+import { nombre } from "../../formato";
+import { cursosGestionables } from "./cursosGestionables";
 import { Encabezado, Tarjeta, Vacio } from "../ui";
 
 /**
  * Metricas agregadas (nunca muestran quien pregunto).
- * Coordinacion: toda la carrera. Docente: uno de sus cursos asignados.
+ * Coordinacion: toda la carrera activa. Docente: uno de sus cursos asignados.
  */
 export default function Metricas({ usuario, carrera, fallar }) {
   const esCoord = usuario.rol === "coordinacion";
@@ -32,12 +33,13 @@ export default function Metricas({ usuario, carrera, fallar }) {
   }
 
   const maximo = datos?.top[0]?.n || 1;
+  const sinRespuesta = datos?.sin_respaldo.length || 0;
 
   return (
     <>
-      <Encabezado contexto={carrera} titulo="Métricas"
+      <Encabezado titulo="Métricas"
                   descripcion={esCoord
-                    ? "Qué preguntan los estudiantes de la carrera y qué falta en los documentos."
+                    ? `Qué preguntan los estudiantes de ${nombre(carrera)} y qué falta en los documentos.`
                     : "Qué preguntan los estudiantes en tus cursos."}>
         {!esCoord && cursos.length > 0 && (
           <select value={curso} style={{ width: 200 }} aria-label="Curso"
@@ -47,12 +49,14 @@ export default function Metricas({ usuario, carrera, fallar }) {
         )}
         <button className="btn btn-secundario" disabled={cargando || (!esCoord && !curso)}
                 onClick={() => cargar(curso)}>
-          <RotateCcw size={16} />{cargando ? "Cargando…" : "Actualizar"}
+          <RotateCcw size={16} />{cargando ? "Actualizando…" : "Actualizar"}
         </button>
       </Encabezado>
 
       {!esCoord && cursos.length === 0 && (
-        <Tarjeta><Vacio icono={ChartColumn} titulo="No tienes cursos asignados" /></Tarjeta>
+        <Tarjeta><Vacio icono={ChartColumn} titulo="No tienes cursos asignados">
+          Cuando la coordinación te asigne un curso, aquí verás qué preguntan sus estudiantes.
+        </Vacio></Tarjeta>
       )}
 
       {!datos && cargando && (
@@ -69,33 +73,44 @@ export default function Metricas({ usuario, carrera, fallar }) {
 
       {datos && datos.total > 0 && (
         <>
-          <div className="rejilla rejilla-3">
-            <Dato icono={MessagesSquare} color="primario" numero={datos.total} etiqueta="consultas en total" />
-            <Dato icono={CircleCheck} color="exito" numero={`${datos.pct_respaldo} %`}
-                  etiqueta="respondidas con respaldo documental" />
-            <Dato icono={TriangleAlert} color="aviso" numero={datos.sin_respaldo.length}
-                  etiqueta="preguntas sin respuesta en los documentos" />
-          </div>
+          <dl className="resumen">
+            <div>
+              <dt>Consultas</dt>
+              <dd>{datos.total}</dd>
+            </div>
+            <div>
+              <dt>Con respaldo en los documentos</dt>
+              <dd className={datos.pct_respaldo >= 80 ? "bien" : "atencion"}>{datos.pct_respaldo} %</dd>
+            </div>
+            <div>
+              <dt>Sin respuesta en los documentos</dt>
+              <dd className={sinRespuesta ? "atencion" : "bien"}>
+                {sinRespuesta}<small>{sinRespuesta === 1 ? "pregunta" : "preguntas"}</small>
+              </dd>
+            </div>
+          </dl>
 
-          <div className="rejilla rejilla-2" style={{ marginTop: 24 }}>
+          <div className="dos-columnas">
             <Tarjeta titulo="Temas más consultados"
-                     descripcion="Agrupados por significado: preguntas escritas distinto pero que significan lo mismo cuentan como un solo tema.">
+                     descripcion="Las preguntas que significan lo mismo, aunque estén escritas distinto, cuentan como un solo tema.">
               {datos.top.map((t, i) => (
                 <div key={i} className="tema">
                   <div className="tema-cabecera">
                     <span className="tema-texto">{t.pregunta}</span>
                     <span className="tema-n">{t.n}</span>
                   </div>
-                  {t.variantes > 1 && <div className="tema-meta">{t.variantes} formas distintas de preguntarlo</div>}
-                  <div className="barra-progreso"><span style={{ width: `${(100 * t.n) / maximo}%` }} /></div>
+                  {t.variantes > 1 && <div className="tema-meta">Preguntado de {t.variantes} formas distintas</div>}
+                  <div className="barra-progreso" aria-hidden="true">
+                    <span style={{ width: `${(100 * t.n) / maximo}%` }} />
+                  </div>
                 </div>
               ))}
             </Tarjeta>
 
             <Tarjeta titulo="Vacíos de información"
-                     descripcion="Preguntas que el asistente no pudo responder con los documentos. Indican qué información conviene agregar.">
-              {datos.sin_respaldo.length === 0
-                ? <Vacio icono={TrendingUp} titulo="Ninguna">Todas las consultas tuvieron respaldo.</Vacio>
+                     descripcion="Lo que el asistente no pudo responder con los documentos. Indica qué información conviene agregar.">
+              {sinRespuesta === 0
+                ? <Vacio icono={CircleCheck} titulo="Sin vacíos por ahora">Todas las consultas tuvieron respaldo.</Vacio>
                 : <ul className="filas">
                     {datos.sin_respaldo.map((p, i) => (
                       <li key={i} className="fila">
@@ -109,19 +124,5 @@ export default function Metricas({ usuario, carrera, fallar }) {
         </>
       )}
     </>
-  );
-}
-
-function Dato({ icono: Icono, color, numero, etiqueta }) {
-  return (
-    <div className="tarjeta dato">
-      <div className="dato-icono" style={{ background: `var(--${color}-suave)`, color: `var(--${color})` }}>
-        <Icono size={24} />
-      </div>
-      <div>
-        <div className="dato-numero">{numero}</div>
-        <div className="dato-etiqueta">{etiqueta}</div>
-      </div>
-    </div>
   );
 }

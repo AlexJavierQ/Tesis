@@ -7,11 +7,13 @@ Aqui no hay logica del RAG: solo se orquesta la llamada a los modulos del
 nucleo, se validan permisos y se serializa la respuesta.
 
 ROLES Y PERMISOS
-  administrador -> configuracion del sistema (parametros), todos los usuarios,
-                   bitacora completa. No gestiona contenido academico.
-  coordinacion  -> de facultad hacia abajo: facultades, carreras, cursos,
-                   asignacion de docentes, reglamentos generales, usuarios
-                   estudiante/docente de sus carreras, metricas de la carrera.
+  administrador -> configuracion del sistema (parametros), estructura
+                   institucional (facultades y carreras), todos los usuarios
+                   (asigna coordinadores a carreras), bitacora completa.
+                   No gestiona documentos ni cursos.
+  coordinacion  -> dentro de SUS carreras: cursos, asignacion de docentes,
+                   reglamentos generales, usuarios estudiante/docente,
+                   metricas de la carrera.
   docente       -> solo los cursos que tiene asignados: sube, versiona,
                    activa/desactiva documentos y ve sus metricas.
   estudiante    -> usa el chat.
@@ -183,8 +185,8 @@ def get_facultades():
 
 @app.post("/facultades")
 def crear_facultad(nombre: str = Form(...), authorization: str = Header(None)):
-    """Crea una facultad. Solo coordinacion."""
-    actor = _exigir(authorization, "coordinacion")
+    """Crea una facultad. Solo administrador (estructura institucional)."""
+    actor = _exigir(authorization, "administrador")
     nombre = _nombre_valido(nombre)
     try:
         bd.crear_facultad(nombre)
@@ -209,16 +211,15 @@ def crear_carrera(nombre: str = Form(...), facultad: str = Form(bd.FACULTAD_POR_
                   authorization: str = Header(None)):
     """
     Crea una carrera dentro de una facultad (en la BD) y su carpeta. Solo
-    coordinacion; quien la crea queda asignado a ella para poder gestionarla.
+    administrador; luego asigna la carrera a su coordinador desde Usuarios.
     """
-    actor = _exigir(authorization, "coordinacion")
+    actor = _exigir(authorization, "administrador")
     nombre = _nombre_valido(nombre)
     try:
         bd.crear_carrera(nombre, facultad)
     except ValueError as e:
         raise HTTPException(409, str(e))
     os.makedirs(rag.carpeta_global(nombre), exist_ok=True)
-    auth.actualizar_usuario(actor["usuario"], carreras=actor["carreras"] + [nombre])
     bd.log("crear_carrera", f"{nombre} ({facultad})", actor["usuario"])
     return {"ok": True, "carrera": nombre}
 
