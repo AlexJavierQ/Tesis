@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { GraduationCap, CircleAlert } from "lucide-react";
 import { api, setToken } from "../api";
 
 /**
@@ -28,20 +29,33 @@ export default function Login({ onOk }) {
   return (
     <div className="pantalla-login">
       <form className="caja-login" onSubmit={enviar}>
-        <h1>Asistente de Practicum</h1>
-        <p className="ayuda">
-          Usuarios de demo: <b>estudiante / docente / coord / admin</b> — contrasena: <b>demo2026</b>
-        </p>
-        <label>Usuario o correo
-          <input value={usuario} onChange={(e) => setUsuario(e.target.value)} required autoFocus />
+        <div>
+          <div className="marca-logo"><GraduationCap size={24} /></div>
+          <h1>Asistente de Prácticum</h1>
+          <p className="subtitulo">Inicia sesión con tu usuario o correo institucional.</p>
+        </div>
+
+        <label className="campo">
+          <span>Usuario o correo</span>
+          <input value={usuario} onChange={(e) => setUsuario(e.target.value)}
+                 autoComplete="username" required autoFocus />
         </label>
-        <label>Contrasena
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <label className="campo">
+          <span>Contraseña</span>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                 autoComplete="current-password" required />
         </label>
-        {error && <div className="aviso-error">{error}</div>}
-        <button type="submit" disabled={enviando}>
-          {enviando ? "Entrando..." : "Entrar"}
+
+        {error && <div className="error-formulario"><CircleAlert size={16} />{error}</div>}
+
+        <button type="submit" className="btn btn-primario" disabled={enviando}>
+          {enviando ? "Entrando…" : "Entrar"}
         </button>
+
+        <div className="demo">
+          Usuarios de demostración: <code>estudiante</code>, <code>docente</code>,{" "}
+          <code>coord</code> y <code>admin</code>. Contraseña: <code>demo2026</code>.
+        </div>
       </form>
     </div>
   );

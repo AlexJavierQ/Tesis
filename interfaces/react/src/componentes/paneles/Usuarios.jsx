@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
+import { UserPlus, Search, KeyRound, Trash2, Users } from "lucide-react";
 import { api } from "../../api";
-
-const NOMBRE_ROL = {
-  estudiante: "Estudiante",
-  docente: "Docente",
-  coordinacion: "Coordinación",
-  administrador: "Administrador",
-};
+import { NOMBRE_ROL } from "../../navegacion";
+import { Encabezado, Tarjeta, Insignia, Segmentado, Modal, Vacio } from "../ui";
 
 /**
  * Gestion de usuarios.
@@ -22,11 +18,9 @@ export default function Usuarios({ usuario, carrera, avisar, fallar }) {
 
   const [usuarios, setUsuarios] = useState([]);
   const [carrerasPosibles, setCarrerasPosibles] = useState([]);
-  const vacio = {
-    usuario: "", nombre: "", correo: "", password: "",
-    rol: "estudiante", carreras: carrera ? [carrera] : [],
-  };
-  const [nuevo, setNuevo] = useState(vacio);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroRol, setFiltroRol] = useState("todos");
+  const [creando, setCreando] = useState(false);
 
   useEffect(() => {
     cargar();
@@ -45,125 +39,167 @@ export default function Usuarios({ usuario, carrera, avisar, fallar }) {
       await accion();
       avisar(mensaje);
       cargar();
-    } catch (e) { fallar(e.message); }
-  }
-
-  function marcarCarrera(c) {
-    const ya = nuevo.carreras.includes(c);
-    setNuevo({ ...nuevo, carreras: ya ? nuevo.carreras.filter((x) => x !== c) : [...nuevo.carreras, c] });
-  }
-
-  function crear() {
-    hacer(async () => {
-      await api.usuarios.crear(nuevo);
-      setNuevo(vacio);
-    }, `Usuario "${nuevo.usuario}" creado.`);
+      return true;
+    } catch (e) { fallar(e.message); return false; }
   }
 
   function cambiarRol(u, rol) {
-    if (u.rol === rol || !confirm(`¿Cambiar el rol de "${u.usuario}" a ${NOMBRE_ROL[rol]}?`)) return;
-    hacer(() => api.usuarios.actualizar(u.usuario, { rol }), `Rol de "${u.usuario}" actualizado.`);
+    if (u.rol === rol || !confirm(`¿Cambiar el rol de ${u.nombre} a ${NOMBRE_ROL[rol]}?`)) return;
+    hacer(() => api.usuarios.actualizar(u.usuario, { rol }), `Rol de ${u.nombre} actualizado.`);
   }
 
-  function resetearPassword(u) {
-    const p = prompt(`Nueva contraseña para "${u.usuario}" (mínimo 6 caracteres):`);
+  function cambiarPassword(u) {
+    const p = prompt(`Nueva contraseña para ${u.nombre} (mínimo 6 caracteres):`);
     if (!p || !p.trim()) return;
     hacer(() => api.usuarios.actualizar(u.usuario, { nuevo_password: p }),
-          `Contraseña de "${u.usuario}" cambiada. Sus sesiones activas se cerraron.`);
+          `Contraseña de ${u.nombre} cambiada. Sus sesiones abiertas se cerraron.`);
   }
 
   function borrar(u) {
-    if (!confirm(`¿Borrar al usuario "${u.usuario}"? Esta acción es irreversible.`)) return;
-    hacer(() => api.usuarios.borrar(u.usuario), `Usuario "${u.usuario}" borrado.`);
+    if (!confirm(`¿Eliminar a ${u.nombre}? Se borran también sus conversaciones. No se puede deshacer.`)) return;
+    hacer(() => api.usuarios.borrar(u.usuario), `${u.nombre} eliminado.`);
   }
 
-  const necesitaCarrera = nuevo.rol !== "administrador";
-  const formularioValido = nuevo.usuario.trim() && nuevo.nombre.trim() && nuevo.correo.trim()
-    && nuevo.password.length >= 6 && (!necesitaCarrera || nuevo.carreras.length > 0);
+  const texto = busqueda.trim().toLowerCase();
+  const visibles = usuarios.filter((u) =>
+    (filtroRol === "todos" || u.rol === filtroRol)
+    && (!texto || [u.usuario, u.nombre, u.correo].some((v) => v.toLowerCase().includes(texto))));
+
+  const filtros = [{ valor: "todos", texto: "Todos" },
+    ...rolesPermitidos.map((r) => ({ valor: r, texto: NOMBRE_ROL[r] }))];
 
   return (
-    <section className="admin-seccion">
-      <h3>Usuarios</h3>
-      <p className="admin-nota">
-        {esAdmin
-          ? "Como administrador gestionas a todos los usuarios, incluidos coordinadores y administradores."
-          : "Como coordinación gestionas a los estudiantes y docentes de tus carreras."}
-        {" "}Cambiar la contraseña o desactivar a alguien cierra sus sesiones activas.
-      </p>
+    <>
+      <Encabezado contexto={esAdmin ? "Sistema" : carrera} titulo="Usuarios"
+                  descripcion={esAdmin
+                    ? "Todas las cuentas de la plataforma, incluidos coordinadores y administradores."
+                    : "Estudiantes y docentes de tus carreras."}>
+        <button className="btn btn-primario" onClick={() => setCreando(true)}>
+          <UserPlus size={18} />Nuevo usuario
+        </button>
+      </Encabezado>
 
-      <h4>Crear nuevo usuario</h4>
-      <div className="fila">
-        <label>Usuario:
-          <input value={nuevo.usuario} placeholder="ej: jperez"
-                 onChange={(e) => setNuevo({ ...nuevo, usuario: e.target.value })} />
-        </label>
-        <label>Nombre completo:
-          <input value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
-        </label>
-        <label>Correo:
-          <input type="email" value={nuevo.correo} placeholder="jperez@utpl.edu.ec"
-                 onChange={(e) => setNuevo({ ...nuevo, correo: e.target.value })} />
-        </label>
-        <label>Contraseña (mín. 6):
-          <input type="password" value={nuevo.password}
-                 onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
-        </label>
-        <label>Rol:
-          <select value={nuevo.rol} onChange={(e) => setNuevo({ ...nuevo, rol: e.target.value })}>
-            {rolesPermitidos.map((r) => <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
-          </select>
-        </label>
-      </div>
-      <div className="fila checks">
-        <span>Carreras{necesitaCarrera ? "" : " (opcional)"}:</span>
-        {carrerasPosibles.map((c) => (
-          <label key={c}>
-            <input type="checkbox" checked={nuevo.carreras.includes(c)} onChange={() => marcarCarrera(c)} /> {c}
-          </label>
-        ))}
-        <button onClick={crear} disabled={!formularioValido}>Crear usuario</button>
-      </div>
+      <Tarjeta>
+        <div className="herramientas">
+          <div className="buscador">
+            <Search size={17} />
+            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+                   placeholder="Buscar por nombre, usuario o correo" />
+          </div>
+          <Segmentado opciones={filtros} valor={filtroRol} onChange={setFiltroRol} />
+        </div>
 
-      <h4>Usuarios ({usuarios.length})</h4>
-      <table className="tabla-usuarios">
-        <thead>
-          <tr>
-            <th>Usuario</th><th>Correo</th><th>Rol</th><th>Carreras</th><th>Estado</th><th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {usuarios.map((u) => {
-            const soyYo = u.usuario === usuario.usuario;
-            return (
-              <tr key={u.usuario} className={u.activo ? "" : "doc-inactivo"}>
-                <td>
-                  {u.usuario}{soyYo && <span className="chip-yo"> (tú)</span>}
-                  <br /><small>{u.nombre}</small>
-                </td>
-                <td>{u.correo}</td>
-                <td>
-                  <select value={u.rol} disabled={soyYo} onChange={(e) => cambiarRol(u, e.target.value)}>
-                    {(rolesPermitidos.includes(u.rol) ? rolesPermitidos : [u.rol]).map((r) =>
-                      <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
-                  </select>
-                </td>
-                <td>{u.carreras.join(", ") || "—"}</td>
-                <td>
-                  <button className="btn-secundario" disabled={soyYo} title="Clic para cambiar"
-                          onClick={() => hacer(() => api.usuarios.actualizar(u.usuario, { activo: !u.activo }),
-                                               `Usuario "${u.usuario}" ${u.activo ? "desactivado" : "activado"}.`)}>
-                    {u.activo ? "Activo" : "Inactivo"}
-                  </button>
-                </td>
-                <td>
-                  <button className="btn-secundario" onClick={() => resetearPassword(u)}>Cambiar contraseña</button>
-                  <button className="btn-peligro" disabled={soyYo} onClick={() => borrar(u)}>Borrar</button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </section>
+        {visibles.length === 0
+          ? <Vacio icono={Users} titulo="No hay usuarios que coincidan" />
+          : <div className="tabla-envoltura">
+              <table className="tabla">
+                <thead>
+                  <tr><th>Persona</th><th>Rol</th><th>Carreras</th><th>Estado</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {visibles.map((u) => {
+                    const soyYo = u.usuario === usuario.usuario;
+                    return (
+                      <tr key={u.usuario}>
+                        <td>
+                          <strong>{u.nombre}</strong>{soyYo && <> <Insignia tipo="primario">Tú</Insignia></>}
+                          <div className="secundario">{u.usuario} · {u.correo}</div>
+                        </td>
+                        <td>
+                          <select value={u.rol} disabled={soyYo} aria-label="Rol"
+                                  onChange={(e) => cambiarRol(u, e.target.value)}>
+                            {(rolesPermitidos.includes(u.rol) ? rolesPermitidos : [u.rol]).map((r) =>
+                              <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
+                          </select>
+                        </td>
+                        <td>{u.carreras.length
+                          ? <div className="fila-meta">{u.carreras.map((c) => <Insignia key={c}>{c}</Insignia>)}</div>
+                          : <span className="secundario">—</span>}</td>
+                        <td>
+                          <button className="btn btn-fantasma btn-chico" disabled={soyYo}
+                                  title={u.activo ? "Clic para desactivar" : "Clic para activar"}
+                                  onClick={() => hacer(() => api.usuarios.actualizar(u.usuario, { activo: !u.activo }),
+                                    `${u.nombre} ${u.activo ? "desactivado: ya no puede iniciar sesión" : "activado"}.`)}>
+                            {u.activo ? <Insignia tipo="exito">Activo</Insignia> : <Insignia>Inactivo</Insignia>}
+                          </button>
+                        </td>
+                        <td>
+                          <div className="fila-acciones-derecha">
+                            <button className="btn btn-fantasma btn-icono" title="Cambiar contraseña"
+                                    onClick={() => cambiarPassword(u)}><KeyRound size={16} /></button>
+                            <button className="btn btn-peligro btn-icono" title="Eliminar usuario"
+                                    disabled={soyYo} onClick={() => borrar(u)}><Trash2 size={16} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>}
+      </Tarjeta>
+
+      {creando && (
+        <NuevoUsuario roles={rolesPermitidos} carreras={carrerasPosibles} carreraInicial={carrera}
+                      onCerrar={() => setCreando(false)}
+                      onCrear={async (datos) => {
+                        const ok = await hacer(() => api.usuarios.crear(datos), `${datos.nombre} fue creado.`);
+                        if (ok) setCreando(false);
+                      }} />
+      )}
+    </>
+  );
+}
+
+/** Formulario de alta, en una ventana aparte para no saturar la pantalla. */
+function NuevoUsuario({ roles, carreras, carreraInicial, onCerrar, onCrear }) {
+  const [d, setD] = useState({
+    usuario: "", nombre: "", correo: "", password: "",
+    rol: "estudiante", carreras: carreraInicial ? [carreraInicial] : [],
+  });
+  const cambiar = (campo) => (e) => setD({ ...d, [campo]: e.target.value });
+  const necesitaCarrera = d.rol !== "administrador";
+  const valido = d.usuario.trim() && d.nombre.trim() && d.correo.trim()
+    && d.password.length >= 6 && (!necesitaCarrera || d.carreras.length > 0);
+
+  function marcar(c) {
+    setD({ ...d, carreras: d.carreras.includes(c) ? d.carreras.filter((x) => x !== c) : [...d.carreras, c] });
+  }
+
+  return (
+    <Modal titulo="Nuevo usuario" descripcion="La persona podrá entrar con su usuario o su correo."
+           onCerrar={onCerrar}
+           pie={<>
+             <button className="btn btn-fantasma" onClick={onCerrar}>Cancelar</button>
+             <button className="btn btn-primario" disabled={!valido} onClick={() => onCrear(d)}>
+               <UserPlus size={18} />Crear usuario
+             </button>
+           </>}>
+      <div className="rejilla-campos">
+        <label className="campo"><span>Nombre completo</span>
+          <input value={d.nombre} onChange={cambiar("nombre")} autoFocus /></label>
+        <label className="campo"><span>Correo</span>
+          <input type="email" value={d.correo} onChange={cambiar("correo")} placeholder="nombre@utpl.edu.ec" /></label>
+        <label className="campo"><span>Usuario</span>
+          <input value={d.usuario} onChange={cambiar("usuario")} placeholder="ej: jperez" /></label>
+        <label className="campo"><span>Contraseña</span>
+          <input type="password" value={d.password} onChange={cambiar("password")} />
+          <small>Mínimo 6 caracteres.</small></label>
+        <label className="campo"><span>Rol</span>
+          <select value={d.rol} onChange={cambiar("rol")}>
+            {roles.map((r) => <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
+          </select></label>
+      </div>
+      <div className="campo" style={{ marginTop: 20 }}>
+        <span>Carreras{necesitaCarrera ? "" : " (opcional para administradores)"}</span>
+        <div className="casillas">
+          {carreras.map((c) => (
+            <label key={c} className="casilla">
+              <input type="checkbox" checked={d.carreras.includes(c)} onChange={() => marcar(c)} />{c}
+            </label>
+          ))}
+        </div>
+      </div>
+    </Modal>
   );
 }

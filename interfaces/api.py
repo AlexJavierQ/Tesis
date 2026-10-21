@@ -418,6 +418,8 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
     return {
         "respuesta": r["respuesta"],
         "con_respaldo": r["con_respaldo"],
+        # True = el modelo no respondio y se muestran los fragmentos tal cual
+        "degradado": r.get("degradado", False),
         "modo": r["modo"],
         # como entendio el sistema la pregunta (distinta si la memoria la reescribio)
         "pregunta_interpretada": r["pregunta_interpretada"],
@@ -604,9 +606,9 @@ def get_metricas(carrera: Optional[str] = None,
 # ==================== CONFIGURACION DEL SISTEMA (solo administrador) ====================
 @app.get("/parametros")
 def get_parametros(authorization: str = Header(None)):
-    """Parametros configurables con su descripcion, rango y ultimo cambio."""
+    """Parametros configurables agrupados por area, con descripcion, rango y ultimo cambio."""
     _exigir(authorization, "administrador")
-    return parametros.listar()
+    return parametros.por_areas()
 
 
 @app.put("/parametros/{clave}")

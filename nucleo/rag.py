@@ -155,7 +155,7 @@ def _empaquetar(texto, usados):
         crudo = "\n\n".join(f"- {h['texto']} ({h['meta']['fuente']}, pag. {h['meta']['pagina']})"
                             for h in usados[:2])
         return {"respuesta": "(Segun los documentos oficiales:)\n\n" + crudo,
-                "citas": citas, "con_respaldo": True}
+                "citas": citas, "con_respaldo": True, "degradado": True}
     abstencion = _abstencion()
     if abstencion[:30].lower() in texto.lower():  # el modelo se abstuvo
         return {"respuesta": abstencion, "citas": [], "con_respaldo": False}
