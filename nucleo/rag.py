@@ -11,10 +11,11 @@ Ambitos (scope): etiqueta que distingue de que documentos se puede leer.
   "<carrera>|global"          -> reglamentos generales de la carrera
   "<carrera>|curso:<curso>"   -> documentos de un curso especifico
 """
+import math
 import os
 import re
 import unicodedata
-from nucleo import vectorstore, llm, bd, parametros, memoria as memoria_conv
+from nucleo import llm, bd, parametros, busqueda, memoria as memoria_conv
 
 BASE = os.path.dirname(__file__)
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
@@ -113,12 +114,39 @@ def _contextualizar(pregunta, historial):
 
 
 # ---------- helpers del flujo ----------
+def _secciones(hits):
+    """
+    Agrupa los fragmentos recuperados por la SECCION de la que salen (metadato
+    "contexto") sin repetirlas, en orden de relevancia, hasta el maximo de
+    secciones configurado. Varios fragmentos de una misma seccion la refuerzan,
+    pero el modelo la lee una sola vez.
+    """
+    maximo = parametros.obtener("secciones_contexto")
+    vistas, salida = set(), []
+    for h in hits:
+        clave = (h["meta"].get("documento_id"), h["meta"].get("contexto") or h["texto"])
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        salida.append(h)
+        if len(salida) >= maximo:
+            break
+    return salida
+
+
 def _contexto(hits):
-    """Texto de los fragmentos, cada uno etiquetado con su fuente y pagina."""
-    return "\n\n".join(
-        f"[Fuente: {h['meta']['fuente']}, pag. {h['meta']['pagina']}]\n{h['texto']}"
-        for h in hits
-    )
+    """Texto de las secciones, cada una etiquetada con fuente, pagina, seccion y vigencia."""
+    vigencia = bd.vigencias()
+    bloques = []
+    for h in _secciones(hits):
+        m = h["meta"]
+        etiqueta = f"Fuente: {m['fuente']}, pag. {m['pagina']}"
+        if m.get("seccion"):
+            etiqueta += f", seccion: {m['seccion']}"
+        if vigencia.get(m.get("documento_id")):
+            etiqueta += f", vigencia: {vigencia[m['documento_id']]}"
+        bloques.append(f"[{etiqueta}]\n{m.get('contexto') or h['texto']}")
+    return "\n\n".join(bloques)
 
 
 def _bajo_umbral(hits):
@@ -127,19 +155,43 @@ def _bajo_umbral(hits):
     return [h for h in hits if h["distancia"] <= umbral]
 
 
-def _citas_de(usados):
-    """Hasta max_citas fuentes distintas (sin repetir archivo+pagina)."""
+def _citas_de(usados, respuesta=""):
+    """
+    Hasta max_citas fuentes distintas (sin repetir archivo+pagina).
+    Se ordenan por cuanto RESPALDAN la respuesta redactada: la seccion que mas
+    palabras comparte con la respuesta va primero, y las que no comparten
+    ninguna se descartan. Asi la cita apunta a donde realmente sale el dato,
+    no solo a lo que la busqueda trajo primero.
+    Cada cita guarda el documento y la VERSION usada: aunque luego se publique
+    otra version, la respuesta historica sigue apuntando a la que se uso.
+    """
     max_citas = parametros.obtener("max_citas")
+    palabras_resp = set(busqueda._palabras(respuesta))
+    candidatos = _secciones(usados)
+    if palabras_resp:
+        # palabras de cada seccion; una palabra pesa mas cuanto menos secciones
+        # la contienen (las palabras comunes no distinguen de donde sale el dato)
+        vocab = [set(busqueda._palabras(h["meta"].get("contexto") or h["texto"])) for h in candidatos]
+        frecuencia = {p: sum(p in v for v in vocab) for p in palabras_resp}
+        peso = {p: math.log(1 + len(vocab) / f) for p, f in frecuencia.items() if f}
+        apoyo = [sum(peso[p] for p in palabras_resp & v) for v in vocab]
+        orden = sorted(range(len(candidatos)), key=lambda i: apoyo[i], reverse=True)
+        candidatos = [candidatos[i] for i in orden if apoyo[i] > 0]
     vistos, citas = set(), []
-    for h in usados:
-        clave = (h["meta"]["fuente"], h["meta"]["pagina"])
-        if clave not in vistos:
-            vistos.add(clave)
-            citas.append({
-                "fuente": h["meta"]["fuente"],
-                "pagina": h["meta"]["pagina"],
-                "path": h["meta"].get("path", ""),
-            })
+    for h in candidatos:
+        m = h["meta"]
+        clave = (m["fuente"], m["pagina"])
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        citas.append({
+            "fuente": m["fuente"],
+            "pagina": m["pagina"],
+            "seccion": m.get("seccion", ""),
+            "documento_id": m.get("documento_id"),
+            "version": m.get("version"),
+            "path": m.get("path", ""),
+        })
         if len(citas) >= max_citas:
             break
     return citas
@@ -150,11 +202,12 @@ def _empaquetar(texto, usados):
     Arma la respuesta final a partir del texto del LLM y los fragmentos usados.
     Cubre los 3 casos: LLM caido (modo degradado), abstencion, y respuesta ok.
     """
-    citas = _citas_de(usados)
-    if not texto:  # LLM fallo o sin key -> mostrar el contexto crudo
-        crudo = "\n\n".join(f"- {h['texto']} ({h['meta']['fuente']}, pag. {h['meta']['pagina']})"
-                            for h in usados[:2])
-        return {"respuesta": "(Segun los documentos oficiales:)\n\n" + crudo,
+    citas = _citas_de(usados, texto or "")
+    if not texto:  # LLM fallo o sin key -> mostrar las secciones recuperadas tal cual
+        crudo = "\n\n".join(
+            f"- {(h['meta'].get('contexto') or h['texto'])[:600]}\n  ({h['meta']['fuente']}, pag. {h['meta']['pagina']})"
+            for h in _secciones(usados)[:2])
+        return {"respuesta": "Fragmentos encontrados en los documentos oficiales:\n\n" + crudo,
                 "citas": citas, "con_respaldo": True, "degradado": True}
     abstencion = _abstencion()
     if abstencion[:30].lower() in texto.lower():  # el modelo se abstuvo
@@ -163,15 +216,29 @@ def _empaquetar(texto, usados):
 
 
 # ---------- prompts ----------
+# reglas comunes a los dos prompts
+REGLAS = """Reglas:
+- Usa SOLO la informacion del contexto. No completes con conocimiento propio.
+- Si la respuesta incluye fechas, plazos, contactos o enlaces y la vigencia de
+  esa fuente dice que es historica o de un periodo pasado, empieza diciendo de
+  que periodo es el dato (por ejemplo: "Segun la capacitacion del periodo
+  abril-agosto de 2024, ...") y termina recomendando confirmar el dato vigente
+  con el docente o la coordinacion. Nunca presentes un plazo historico como actual.
+- Si dos fuentes dan datos distintos sobre lo mismo, muestra ambos e indica de
+  que fuente sale cada uno. No elijas uno ni los combines.
+- Si la vigencia de la fuente dice que esta vigente, no agregues advertencias.
+- Redacta breve y claro, en espanol, y al final indica la fuente real con este
+  formato: (Fuente: <nombre del archivo>, pag. <numero>)."""
+
+
 def _prompt(pregunta, hits):
     """Prompt normal: un solo bloque de contexto."""
-    return f"""Eres el asistente de Practicum de la UTPL. Responde SOLO usando
+    return f"""Eres el asistente de Practicum de la UTPL. Responde la pregunta con
 el contexto que sigue. Si el dato exacto no esta en el contexto, contesta
 EXACTAMENTE esto y nada mas:
 {_abstencion()}
 
-Si tienes la respuesta, redactala breve y clara en espanol, y al final agrega
-(Fuente: archivo, pag. X).
+{REGLAS}
 
 Contexto:
 {_contexto(hits)}
@@ -181,27 +248,26 @@ Pregunta: {pregunta}"""
 
 def _prompt_doble(pregunta, generales, del_curso, curso):
     """
-    Prompt cuando hay contexto GENERAL (reglamentos de la carrera) Y ESPECIFICO
+    Prompt cuando hay contexto GENERAL (normativa de la carrera) Y ESPECIFICO
     (material del curso). Le pide al modelo distinguir ambos en la respuesta.
     """
     return f"""Eres el asistente de Practicum de la UTPL. El estudiante pregunta
 desde el curso "{curso}". Tienes DOS fuentes de contexto.
 
-CONTEXTO GENERAL (reglamentos de la carrera):
+CONTEXTO GENERAL (normativa de la carrera):
 {_contexto(generales)}
 
 CONTEXTO ESPECIFICO DEL CURSO "{curso}":
 {_contexto(del_curso)}
 
-Responde SOLO con la informacion de los contextos. Si AMBOS aportan algo
-relevante, estructura la respuesta en dos lineas asi:
-  En general: <lo que dicen los reglamentos de la carrera>
+Si AMBOS aportan algo relevante, estructura la respuesta en dos partes asi:
+  En general: <lo que dice la normativa de la carrera>
   En {curso}: <lo que dice el material del curso>
 Si solo uno de los dos aplica, responde directo sin esa estructura. Si el dato
 no esta en ningun contexto, responde EXACTAMENTE esto y nada mas:
 {_abstencion()}
 
-Al final agrega (Fuente: archivo, pag. X).
+{REGLAS}
 
 Pregunta: {pregunta}"""
 
@@ -210,9 +276,12 @@ MODOS = ("general", "curso", "ambos")
 
 
 def _buscar(q, carrera, curso=None):
-    """Busca en UN ambito (global de la carrera, o un curso) y aplica el umbral."""
+    """
+    Busca en UN ambito (global de la carrera, o un curso) con busqueda hibrida
+    (vectores + palabras clave, ver busqueda.py) y aplica el umbral semantico.
+    """
     scope = f"{carrera}|curso:{curso}" if curso else f"{carrera}|global"
-    return _bajo_umbral(vectorstore.buscar(q, k=parametros.obtener("top_k"), filtro={"scope": scope}))
+    return _bajo_umbral(busqueda.buscar(q, scope, parametros.obtener("top_k")))
 
 
 def modo_efectivo(curso, modo):

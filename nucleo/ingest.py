@@ -1,38 +1,43 @@
 # -*- coding: utf-8 -*-
 """
-INGESTA de documentos.
+INGESTA de documentos: del PDF a la base vectorial.
 
-Convierte cada PDF en fragmentos ("chunks") de texto y los guarda en la base
-vectorial. Este paso solo se ejecuta cuando se sube un documento nuevo o
-cuando se quiere reindexar todo.
+FRAGMENTACION POR SECCIONES ("indexar chico, responder con la seccion")
+  1. El PDF se divide en SECCIONES (titulo + contenido) con pdfreader.secciones.
+  2. Cada seccion larga se parte en PARTES de hasta MAX_CONTEXTO caracteres,
+     respetando parrafos. Una parte es lo que el modelo de lenguaje leera.
+  3. Cada parte se trocea en FRAGMENTOS de TAMANO caracteres (con SOLAPE),
+     precedidos por el titulo de la seccion. Esos fragmentos son los que se
+     convierten en vectores: el modelo de embeddings solo lee ~128 tokens
+     (~680 caracteres), asi que un trozo mas largo perderia su final.
+  Al buscar, se recupera el fragmento mas parecido, pero al modelo de lenguaje
+  se le entrega la PARTE completa de la seccion (metadato "contexto").
 
-Estructura esperada de carpetas:
-  datos/docs/<carrera>/global/*.pdf          -> reglamentos de la carrera
+TRAZABILIDAD: cada fragmento guarda el id del documento y el numero de version
+de la que sale, asi una cita apunta siempre a la version exacta usada.
+
+CONSISTENCIA entre archivos, SQLite y ChromaDB (no hay una transaccion comun):
+  - el PDF se procesa ANTES de tocar nada: si no tiene texto, se rechaza;
+  - los pasos sobre archivos y BD se deshacen si algo falla a mitad;
+  - reconciliar() compara catalogo y vectores y corrige diferencias; se
+    ejecuta al arrancar y en la verificacion.
+
+Estructura de carpetas:
+  datos/docs/<carrera>/global/*.pdf          -> normativa de la carrera
   datos/docs/<carrera>/cursos/<curso>/*.pdf  -> documentos de un curso
   .../_versiones/*.pdf                        -> versiones anteriores (no se indexan)
 """
 import os
 import glob
+import uuid
+
 from nucleo import pdfreader, vectorstore, bd
 from nucleo.rag import DOCS
 
-
-TAMANO = 500   # caracteres por fragmento
-SOLAPE = 80    # caracteres compartidos entre fragmentos vecinos (para no cortar frases)
-
-
-def trocear(texto):
-    """
-    Parte el texto en trozos de ~TAMANO caracteres, con SOLAPE entre trozos.
-    El solape asegura que si una frase importante cae entre dos trozos, al
-    menos uno de los dos la contendra entera.
-    """
-    texto = " ".join(texto.split())  # colapsa espacios y saltos de linea
-    trozos, i = [], 0
-    while i < len(texto):
-        trozos.append(texto[i:i + TAMANO])
-        i += TAMANO - SOLAPE
-    return [t for t in trozos if t.strip()]
+TAMANO = 500         # caracteres por fragmento indexado
+SOLAPE = 80          # caracteres compartidos entre fragmentos vecinos
+MAX_CONTEXTO = 1800  # tope de la parte de seccion que se entrega al modelo
+MIN_TEXTO = 200      # un PDF con menos texto util se rechaza (escaneado o vacio)
 
 
 def _scope(carrera, curso):
@@ -49,63 +54,173 @@ def _rel(path):
     return os.path.relpath(os.path.abspath(path), DOCS).replace("\\", "/")
 
 
-def indexar_pdf(path, scope):
+# ---------- fragmentacion ----------
+def trocear(texto):
+    """Parte un texto en trozos de ~TAMANO caracteres con SOLAPE entre trozos."""
+    texto = " ".join(texto.split())
+    trozos, i = [], 0
+    while i < len(texto):
+        trozos.append(texto[i:i + TAMANO])
+        i += TAMANO - SOLAPE
+    return [t for t in trozos if t.strip()]
+
+
+def _partes(seccion):
+    """Divide una seccion en partes de hasta MAX_CONTEXTO caracteres, sin cortar parrafos."""
+    partes, actual, pagina = [], [], None
+    for pag, parrafo in seccion["parrafos"]:
+        if actual and sum(len(p) for p in actual) + len(parrafo) > MAX_CONTEXTO:
+            partes.append((pagina, "\n".join(actual)))
+            actual = []
+        if not actual:
+            pagina = pag
+        actual.append(parrafo)
+    if actual:
+        partes.append((pagina, "\n".join(actual)))
+    return partes
+
+
+def _con_grupos(secciones):
     """
-    Trocea un PDF y guarda sus fragmentos en la base vectorial (ChromaDB).
-    Primero borra los fragmentos anteriores del mismo archivo en ese ambito.
-    Devuelve cuantos fragmentos indexo. (El catalogo de la BD se maneja aparte.)
+    Agrupa una seccion principal numerada con sus subsecciones ("14", "14.1",
+    "14.2"...). Si el grupo completo cabe en MAX_CONTEXTO, todas sus partes
+    comparten como contexto el grupo entero: las subsecciones muy cortas
+    (p. ej. tres listas de evidencias) se entienden mejor juntas, y encontrar
+    cualquiera de ellas le entrega al modelo la seccion completa.
+    Devuelve [(seccion, contexto del grupo o None)].
     """
-    nombre = os.path.basename(path)
-    rel = _rel(path)
-    vectorstore.borrar({"$and": [{"fuente": nombre}, {"scope": scope}]})
-
-    textos, metadatos, ids = [], [], []
-    for num_pag, texto_pag in enumerate(pdfreader.paginas_texto(path), start=1):
-        for j, trozo in enumerate(trocear(texto_pag)):
-            textos.append(trozo)
-            metadatos.append({
-                "fuente": nombre,
-                "pagina": num_pag,
-                "scope": scope,
-                "path": rel,
-            })
-            ids.append(f"{scope}|{nombre}|{num_pag}|{j}")
-    if textos:
-        vectorstore.agregar(textos, metadatos, ids)
-    return len(textos)
+    grupos = []
+    for sec in secciones:
+        numero = pdfreader._numero(sec["titulo"])
+        clave = numero.split(".")[0] if numero else None
+        if clave and grupos and grupos[-1][0] == clave:
+            grupos[-1][1].append(sec)
+        else:
+            grupos.append((clave, [sec]))
+    salida = []
+    for clave, miembros in grupos:
+        texto = "\n".join(s["titulo"] + "\n" + "\n".join(t for _, t in s["parrafos"]) for s in miembros)
+        compartido = texto if clave and len(miembros) > 1 and len(texto) <= MAX_CONTEXTO else None
+        salida.extend((s, compartido) for s in miembros)
+    return salida
 
 
+def fragmentar(path):
+    """
+    Lista de fragmentos de un PDF: [{texto, contexto, pagina, seccion}].
+      texto    -> lo que se convierte en vector (titulo + trozo corto)
+      contexto -> la parte de la seccion que leera el modelo de lenguaje
+    """
+    salida = []
+    for sec, contexto_grupo in _con_grupos(pdfreader.secciones(path)):
+        titulo = sec.get("ruta") or sec["titulo"]   # "14 Evidencias › 14.2 ..." si es subseccion
+        for pagina, cuerpo in _partes(sec):
+            contexto = contexto_grupo or (f"{titulo}\n{cuerpo}" if titulo else cuerpo)
+            for trozo in trocear(cuerpo):
+                salida.append({
+                    "texto": f"{titulo}: {trozo}" if titulo else trozo,
+                    "contexto": contexto,
+                    "pagina": pagina,
+                    "seccion": titulo,
+                })
+    return salida
+
+
+def _validar(path):
+    """Fragmenta un PDF y verifica que tenga texto suficiente. ValueError si no sirve."""
+    try:
+        fragmentos = fragmentar(path)
+    except Exception:
+        raise ValueError("No se pudo leer el PDF (archivo dañado o protegido).")
+    if sum(len(f["texto"]) for f in fragmentos) < MIN_TEXTO:
+        raise ValueError("El PDF casi no tiene texto seleccionable (¿es un escaneo?). "
+                         "Sube una versión con texto.")
+    return fragmentos
+
+
+# ---------- base vectorial ----------
+def _indexar(doc_id, version, nombre, scope, ruta, fragmentos):
+    """Reemplaza en ChromaDB los vectores de un documento por los de esta version."""
+    vectorstore.borrar({"documento_id": doc_id})
+    if not fragmentos:
+        return 0
+    vectorstore.agregar(
+        [f["texto"] for f in fragmentos],
+        [{"fuente": nombre, "pagina": f["pagina"], "seccion": f["seccion"], "scope": scope,
+          "path": ruta, "documento_id": doc_id, "version": version, "contexto": f["contexto"]}
+         for f in fragmentos],
+        [f"d{doc_id}v{version}-{i}" for i in range(len(fragmentos))],
+    )
+    return len(fragmentos)
+
+
+def _indexar_vigente(d):
+    """Indexa la version vigente de un documento del catalogo (dict de bd)."""
+    fragmentos = fragmentar(os.path.join(DOCS, d["ruta"]))
+    n = _indexar(d["id"], d["version"], d["nombre"], _scope(d["carrera"], d["curso"]),
+                 d["ruta"], fragmentos)
+    bd.actualizar_fragmentos(d["id"], d["version"], n)
+    return n
+
+
+# ---------- operaciones sobre documentos ----------
 def guardar_documento(carrera, curso, nombre, contenido, usuario=None, restaurada_de=None):
     """
     Guarda un PDF subido como NUEVA VERSION de su documento.
-      - Si ya habia un archivo con ese nombre en el ambito, la version anterior
-        se archiva en la subcarpeta _versiones/ (no se pierde).
-      - El archivo vigente siempre queda con su nombre original, y es el unico
-        que se indexa en ChromaDB.
-      - Si el documento estaba DESACTIVADO, se guarda la version pero no se indexa.
-    restaurada_de: numero de version copiada (solo cuando se restaura).
+      - Primero se valida el PDF en un archivo temporal (si no sirve, no se toca nada).
+      - Si ya habia un archivo con ese nombre, se archiva en _versiones/.
+      - Si un paso falla, se deshacen los anteriores (archivos y registro en BD).
+      - Si el documento estaba DESACTIVADO, la version se guarda pero no se indexa.
     Devuelve {version, fragmentos, activo}.
     """
     carpeta = _carpeta(carrera, curso)
     os.makedirs(carpeta, exist_ok=True)
     destino = os.path.join(carpeta, nombre)
+    temporal = os.path.join(carpeta, f"_subida_{uuid.uuid4().hex}.pdf")
+    with open(temporal, "wb") as f:
+        f.write(contenido)
+    try:
+        fragmentos = _validar(temporal)
+    except ValueError:
+        os.remove(temporal)
+        raise
 
     previo = bd.documento(carrera, curso, nombre)
-    if previo and os.path.exists(destino):
-        archivo = os.path.join(carpeta, "_versiones",
-                               f"{os.path.splitext(nombre)[0]}_v{previo['version']}.pdf")
-        os.makedirs(os.path.dirname(archivo), exist_ok=True)
-        os.replace(destino, archivo)
-        bd.mover_version(previo["ruta"], _rel(archivo))
+    archivado = None          # (ruta del archivo archivado, ruta anterior) para deshacer
+    registrado = None         # (doc_id, version) para deshacer
+    try:
+        if previo and os.path.exists(destino):
+            archivo = os.path.join(carpeta, "_versiones",
+                                   f"{os.path.splitext(nombre)[0]}_v{previo['version']}.pdf")
+            os.makedirs(os.path.dirname(archivo), exist_ok=True)
+            os.replace(destino, archivo)
+            archivado = (archivo, previo["ruta"])
+            bd.mover_version(previo["ruta"], _rel(archivo))
+        os.replace(temporal, destino)
+        registrado = bd.registrar_version(carrera, curso, nombre, _rel(destino),
+                                          len(fragmentos), usuario, restaurada_de)
+    except Exception:
+        # deshacer en orden inverso: registro, archivo nuevo, archivo anterior
+        if registrado:
+            bd.quitar_version(*registrado)
+        if os.path.exists(temporal):
+            os.remove(temporal)
+        elif archivado or not previo:
+            if os.path.exists(destino):
+                os.remove(destino)
+        if archivado:
+            os.replace(archivado[0], destino)
+            bd.mover_version(_rel(archivado[0]), archivado[1])
+        raise
 
-    with open(destino, "wb") as f:
-        f.write(contenido)
-
+    doc_id, version = registrado
     activo = previo["activo"] if previo else True
-    n = indexar_pdf(destino, _scope(carrera, curso)) if activo else 0
-    version = bd.registrar_version(carrera, curso, nombre, _rel(destino), n, usuario,
-                                   restaurada_de)
-    return {"version": version, "fragmentos": n, "activo": activo}
+    if activo:
+        # si esto falla, la version queda registrada y reconciliar() la indexa al arrancar
+        _indexar(doc_id, version, nombre, _scope(carrera, curso), _rel(destino), fragmentos)
+    else:
+        vectorstore.borrar({"documento_id": doc_id})
+    return {"version": version, "fragmentos": len(fragmentos), "activo": activo}
 
 
 def restaurar_version(doc_id, numero, usuario=None):
@@ -113,7 +228,6 @@ def restaurar_version(doc_id, numero, usuario=None):
     Vuelve a una version anterior AL ESTILO GIT (revert): no borra ni reescribe
     nada; copia el contenido de la version `numero` como una version NUEVA.
       v1, v2, v3 (vigente)  --restaurar v1-->  v1, v2, v3, v4 (= copia de v1)
-    Asi el historial queda completo y se sabe quien restauro y cuando.
     """
     d = bd.documento_por_id(doc_id)
     if not d:
@@ -132,28 +246,25 @@ def restaurar_version(doc_id, numero, usuario=None):
 def cambiar_estado(doc_id, activo):
     """
     Activa o desactiva un documento.
-      desactivar -> se quitan sus fragmentos de ChromaDB (el chat deja de usarlo)
+      desactivar -> se quitan sus vectores (el chat deja de usarlo)
       activar    -> se vuelve a indexar su version vigente
     """
     d = bd.documento_por_id(doc_id)
     if not d:
         raise ValueError("Documento no encontrado.")
-    scope = _scope(d["carrera"], d["curso"])
     bd.cambiar_estado_documento(doc_id, activo)
     if activo:
-        n = indexar_pdf(os.path.join(DOCS, d["ruta"]), scope)
-        bd.actualizar_fragmentos(d["ruta"], n)
+        _indexar_vigente({**d, "activo": True})
     else:
-        vectorstore.borrar({"$and": [{"fuente": d["nombre"]}, {"scope": scope}]})
+        vectorstore.borrar({"documento_id": doc_id})
 
 
 def borrar_documento(doc_id):
-    """Elimina un documento: sus fragmentos, sus archivos (todas las versiones) y su registro."""
+    """Elimina un documento: sus vectores, su registro y sus archivos (todas las versiones)."""
     d = bd.documento_por_id(doc_id)
     if not d:
         raise ValueError("Documento no encontrado.")
-    vectorstore.borrar({"$and": [{"fuente": d["nombre"]},
-                                 {"scope": _scope(d["carrera"], d["curso"])}]})
+    vectorstore.borrar({"documento_id": doc_id})
     for ruta in bd.borrar_documento(doc_id):
         archivo = os.path.join(DOCS, ruta)
         if os.path.exists(archivo):
@@ -161,46 +272,79 @@ def borrar_documento(doc_id):
     return d
 
 
-def _indexar_y_registrar(path, carrera, curso):
-    """Para indexar_todo: indexa un PDF (si no esta desactivado) y lo asegura en el catalogo."""
-    rel = _rel(path)
-    if bd.esta_inactivo(rel):
-        return 0
-    n = indexar_pdf(path, _scope(carrera, curso))
-    if bd.documento(carrera, curso, os.path.basename(path)):
-        bd.actualizar_fragmentos(rel, n)
-    else:
-        bd.registrar_version(carrera, curso, os.path.basename(path), rel, n)
-    return n
+# ---------- coherencia entre catalogo, archivos y vectores ----------
+def reconciliar():
+    """
+    Revisa que ChromaDB refleje exactamente el catalogo de la BD y corrige:
+      - documento activo sin vectores, o con vectores de otra version -> se reindexa
+      - documento desactivado con vectores                              -> se borran
+      - vectores de documentos que ya no existen (o de formato antiguo)  -> se borran
+    Devuelve un informe {reindexados, limpiados, huerfanos, archivos_faltantes}.
+    """
+    informe = {"reindexados": [], "limpiados": [], "huerfanos": 0, "archivos_faltantes": []}
+    vectores = vectorstore.metadatos()
+    por_doc = {}
+    for vid, meta in vectores.items():
+        por_doc.setdefault(meta.get("documento_id"), []).append((vid, meta))
+
+    catalogo = {d["id"]: d for d in bd.todos_los_documentos()}
+    for doc_id, d in catalogo.items():
+        suyos = por_doc.get(doc_id, [])
+        if not d["activo"]:
+            if suyos:
+                vectorstore.borrar_ids([vid for vid, _ in suyos])
+                informe["limpiados"].append(d["nombre"])
+            continue
+        if not os.path.exists(os.path.join(DOCS, d["ruta"])):
+            informe["archivos_faltantes"].append(d["ruta"])
+            continue
+        al_dia = suyos and all(m.get("version") == d["version"] for _, m in suyos) \
+            and len(suyos) == d["fragmentos"]
+        if not al_dia:
+            _indexar_vigente(d)
+            informe["reindexados"].append(d["nombre"])
+
+    huerfanos = [vid for doc_id, lista in por_doc.items() if doc_id not in catalogo
+                 for vid, _ in lista]
+    vectorstore.borrar_ids(huerfanos)
+    informe["huerfanos"] = len(huerfanos)
+    return informe
 
 
 def indexar_todo():
-    """Recorre datos/docs/ e indexa todos los PDF que encuentre."""
+    """
+    Registra en el catalogo los PDF de datos/docs/ que aun no estan (p. ej. al
+    instalar en otra computadora) y deja la base vectorial al dia.
+    """
     if not os.path.isdir(DOCS):
         print(f"No existe la carpeta {DOCS}")
         return
-    total = 0
     for carrera in sorted(os.listdir(DOCS)):
-        cdir = os.path.join(DOCS, carrera)
-        if not os.path.isdir(cdir):
+        if not os.path.isdir(os.path.join(DOCS, carrera)):
             continue
-        # reglamentos generales de la carrera
-        for p in glob.glob(os.path.join(cdir, "global", "*.pdf")):
-            n = _indexar_y_registrar(p, carrera, None)
-            total += n
-            print(f"  [{carrera}|global] {os.path.basename(p)}: {n} fragmentos")
-        # documentos por curso
-        cursos_dir = os.path.join(cdir, "cursos")
+        ambitos = [(None, os.path.join(DOCS, carrera, "global"))]
+        cursos_dir = os.path.join(DOCS, carrera, "cursos")
         if os.path.isdir(cursos_dir):
-            for curso in sorted(os.listdir(cursos_dir)):
-                cu = os.path.join(cursos_dir, curso)
-                if not os.path.isdir(cu):
+            ambitos += [(c, os.path.join(cursos_dir, c)) for c in sorted(os.listdir(cursos_dir))
+                        if os.path.isdir(os.path.join(cursos_dir, c))]
+        for curso, carpeta in ambitos:
+            for p in glob.glob(os.path.join(carpeta, "*.pdf")):
+                nombre = os.path.basename(p)
+                if nombre.startswith("_") or bd.documento(carrera, curso, nombre):
                     continue
-                for p in glob.glob(os.path.join(cu, "*.pdf")):
-                    n = _indexar_y_registrar(p, carrera, curso)
-                    total += n
-                    print(f"  [{carrera}|curso:{curso}] {os.path.basename(p)}: {n} fragmentos")
-    print(f"\nListo. {total} fragmentos indexados en total.")
+                try:
+                    fragmentos = _validar(p)
+                except ValueError as e:
+                    print(f"  [omitido] {nombre}: {e}")
+                    continue
+                bd.registrar_version(carrera, curso, nombre, _rel(p), len(fragmentos))
+                print(f"  [registrado] {_scope(carrera, curso)} {nombre}")
+    informe = reconciliar()
+    print(f"  reindexados: {informe['reindexados'] or 'ninguno'} | "
+          f"vectores huerfanos borrados: {informe['huerfanos']}")
+    if informe["archivos_faltantes"]:
+        print(f"  ATENCION, faltan archivos: {informe['archivos_faltantes']}")
+    print(f"\nListo. {vectorstore.contar()} fragmentos indexados en total.")
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@ UN SOLO COMANDO para arrancar todo el sistema.
     python arrancar.py
 
 Hace todo lo necesario:
-  1. Indexa los PDF si el indice esta vacio.
-  2. Crea los usuarios demo si no existen.
+  1. Indexa los PDF si hace falta y revisa que el indice coincida con el catalogo.
+  2. Crea el primer administrador si no hay usuarios.
   3. Arranca la API FastAPI en http://localhost:8000
   4. Arranca el frontend React en http://localhost:5173
 
@@ -14,11 +14,10 @@ Requisito previo: ya debe haber PDFs en datos/docs/<carrera>/global/ (y
 opcionalmente en datos/docs/<carrera>/cursos/<curso>/). El coordinador
 o docente pueden subirlos despues desde la interfaz.
 
-Usuarios demo:
-  estudiante / demo2026
-  docente    / demo2026
-  coord      / demo2026
-  admin      / demo2026   (administrador: configuracion del sistema)
+Primer acceso: si la base de datos no tiene usuarios, se crea el usuario
+"admin". Su contrasena es ADMIN_PASSWORD (secretos.toml o variable de entorno)
+o, si no esta definida, una al azar que se muestra una vez en la consola.
+Cuentas de prueba locales (opcional): python -m nucleo.auth --prueba
 
 Ctrl+C para parar TODO.
 """
@@ -37,8 +36,13 @@ def paso(texto):
 
 
 def preparar():
-    """Indexa si el vectorstore esta vacio y siembra usuarios (auth lo hace al importar)."""
-    from nucleo import vectorstore, ingest, auth, bd  # noqa: F401  (auth crea usuarios demo)
+    """
+    Deja los datos listos antes de arrancar:
+      - crea la BD y, si no hay usuarios, el primer administrador (auth.py)
+      - registra los PDF de datos/docs/ que falten en el catalogo
+      - revisa que ChromaDB coincida con el catalogo y corrige diferencias
+    """
+    from nucleo import vectorstore, ingest, auth, bd  # noqa: F401  (auth crea el primer admin)
 
     with bd.transaccion() as c:
         catalogo_vacio = c.execute("SELECT COUNT(*) FROM documentos").fetchone()[0] == 0
@@ -46,9 +50,12 @@ def preparar():
         paso("Indice o catalogo vacio. Indexando el corpus de datos/docs/...")
         ingest.indexar_todo()
     else:
+        informe = ingest.reconciliar()
+        if informe["reindexados"] or informe["huerfanos"] or informe["limpiados"]:
+            paso(f"Se corrigieron diferencias entre catalogo e indice: {informe}")
+        if informe["archivos_faltantes"]:
+            paso(f"ATENCION: faltan archivos de documentos: {informe['archivos_faltantes']}")
         paso(f"Indice OK ({vectorstore.contar()} fragmentos).")
-
-    paso("Usuarios demo listos: estudiante / docente / coord / admin (pass: demo2026)")
 
 
 def instalar_react():

@@ -8,10 +8,10 @@ import { Insignia } from "./ui";
 
 // preguntas de ejemplo para la pantalla de bienvenida
 const SUGERENCIAS = [
-  "¿Cuántas horas de prácticas necesito en total?",
-  "¿Cuál es el plazo para entregar el informe final?",
-  "¿Qué formato uso para el plan de prácticas?",
-  "¿Qué nota necesito para aprobar el Prácticum?",
+  "¿Cuántas horas de prácticas tiene una carrera de ingeniería?",
+  "¿Qué evidencias se presentan en las prácticas de entorno laboral?",
+  "¿Cómo se pondera la evaluación del prácticum?",
+  "¿En qué se diferencia un practicante de un pasante?",
 ];
 
 // desde donde se busca la respuesta, de lo mas general a lo mas especifico
@@ -198,7 +198,10 @@ export default function Chat({ carrera }) {
                         <div className="citas-titulo">Fuentes</div>
                         <div className="citas-lista">
                           {m.citas.map((c, j) => (
-                            <span key={j} className="cita"><FileText size={14} />{c.fuente}, pág. {c.pagina}</span>
+                            <span key={j} className="cita" title={c.seccion || undefined}>
+                              <FileText size={14} />{c.fuente}, pág. {c.pagina}
+                              {c.version && <small>versión {c.version}</small>}
+                            </span>
                           ))}
                         </div>
                       </div>

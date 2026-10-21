@@ -129,6 +129,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ activo }),
     }),
+  cambiarVigencia: (id, vigencia) =>
+    pedir(`/documentos/${id}/vigencia`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vigencia }),
+    }),
 
   // solo administrador: bitacora y configuracion del sistema
   logs: () => pedir("/logs"),

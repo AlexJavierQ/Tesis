@@ -13,6 +13,7 @@ carreras=["computacion"]); por dentro se resuelven a los ids de las tablas.
 La contrasena NUNCA se guarda en claro: se guarda su HASH (PBKDF2-HMAC-SHA256
 con sal aleatoria y 200.000 iteraciones), estandar recomendado por NIST.
 """
+import os
 import re
 import hashlib
 import secrets
@@ -71,11 +72,32 @@ def _ids_carreras(c, carreras, rol):
     return ids
 
 
-# ---------- seed de usuarios demo ----------
+# ---------- primer administrador y cuentas de prueba ----------
 def _seed():
     """
-    Crea los usuarios de demostracion que falten (contrasena demo2026).
-    El docente demo queda asignado a los cursos de la carrera por defecto.
+    Si la BD no tiene usuarios, crea UN administrador para poder entrar por
+    primera vez. Su contrasena se toma de la variable de entorno ADMIN_PASSWORD;
+    si no esta definida, se genera una aleatoria y se muestra una sola vez en
+    la consola. No se crean cuentas con contrasenas conocidas.
+    """
+    with bd.transaccion() as c:
+        hay_usuarios = c.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] > 0
+    if hay_usuarios:
+        return
+    password = os.environ.get("ADMIN_PASSWORD") or secrets.token_urlsafe(9)
+    crear_usuario("admin", "Administrador", "admin@utpl.edu.ec", password, "administrador", [])
+    if not os.environ.get("ADMIN_PASSWORD"):
+        print("\n" + "=" * 64)
+        print("  Primer acceso: usuario 'admin', contrasena:", password)
+        print("  Guardala y cambiala desde Usuarios. No se volvera a mostrar.")
+        print("=" * 64 + "\n")
+
+
+def crear_cuentas_de_prueba():
+    """
+    SOLO PARA PRUEBAS LOCALES (se ejecuta a mano: python -m nucleo.auth --prueba).
+    Crea estudiante / docente / coord / admin con contrasena demo2026.
+    El docente queda asignado a los cursos de la carrera por defecto.
     """
     demos = [
         ("estudiante", "Estudiante Demo",    "estudiante@utpl.edu.ec", "estudiante"),
@@ -244,5 +266,14 @@ def logout(token):
         c.execute("DELETE FROM sesiones WHERE token=?", (token,))
 
 
-# al importar el modulo se aseguran los usuarios demo
+# al importar el modulo se asegura que exista al menos un administrador
 _seed()
+
+
+if __name__ == "__main__":
+    import sys
+    if "--prueba" in sys.argv:
+        crear_cuentas_de_prueba()
+        print("Cuentas de prueba listas: estudiante / docente / coord / admin (demo2026).")
+    else:
+        print("Uso: python -m nucleo.auth --prueba   (crea cuentas de prueba locales)")

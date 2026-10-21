@@ -56,7 +56,7 @@ El administrador es el único rol que puede no tener carreras.
 
 | Tabla | Columnas | Nota |
 |---|---|---|
-| `documentos` | id, carrera_id, curso_id, nombre, activo, creado_en | `curso_id` NULL = documento global de la carrera |
+| `documentos` | id, carrera_id, curso_id, nombre, activo, vigencia, creado_en | `curso_id` NULL = documento global de la carrera; `vigencia` = período al que se refiere la fuente |
 | `documento_versiones` | id, documento_id, numero, ruta, fragmentos, subido_por, subido_en, restaurada_de | una fila por cada vez que se sube el archivo |
 
 - Subir un PDF con un nombre que ya existe en ese ámbito crea la **versión
@@ -112,7 +112,7 @@ tamaño máximo de PDF y los mensajes fijos del asistente. Cada valor se valida
 por tipo y rango antes de guardarse, y cada cambio queda en `logs`.
 
 La **API key** del modelo no es un parámetro: es un secreto y se queda en
-`.streamlit/secrets.toml` o en variables de entorno, fuera de la base de datos.
+`secretos.toml` o en variables de entorno, fuera de la base de datos.
 
 ### Reglas de robustez
 
@@ -129,8 +129,8 @@ La **API key** del modelo no es un parámetro: es un secreto y se queda en
 - **Transacciones**: cada operación corre dentro de `bd.transaccion()`; si algo
   falla se hace `ROLLBACK` y no queda nada a medias.
 - **Índices** sobre las claves foráneas más consultadas.
-- **Versión del esquema** en `PRAGMA user_version` (= 4). Una base de la
-  versión 1 se recrea; las versiones 2 y 3 se migran sin perder datos (se agregan
+- **Versión del esquema** en `PRAGMA user_version` (= 5). Una base de la
+  versión 1 se recrea; las versiones 2 a 4 se migran sin perder datos (se agregan
   las tablas y columnas nuevas; al pasar de la 2 a la 3, a cada docente se le
   asignan los cursos de su carrera para que conserve el acceso que ya tenía).
 
@@ -138,29 +138,37 @@ La **API key** del modelo no es un parámetro: es un secreto y se queda en
 
 ## 2. Base vectorial (ChromaDB)
 
-No es relacional. Cada fragmento se guarda con su texto, su embedding
-(384 números, MiniLM) y estos metadatos:
+No es relacional. Cada fragmento se guarda con su texto (título de la sección +
+trozo de ~500 caracteres), su embedding (384 números, MiniLM) y estos metadatos:
 
 ```json
 {
-  "fuente": "Reglamento_de_Practicum.pdf",
-  "pagina": 3,
-  "scope":  "computacion|global",
-  "path":   "computacion/global/Reglamento_de_Practicum.pdf"
+  "fuente": "Modelo_de_Practicas_Preprofesionales_RR_2023.pdf",
+  "pagina": 25,
+  "seccion": "14 Evidencias de las prácticas preprofesionales › 14.2 Prácticas de inserción…",
+  "scope": "computacion|global",
+  "path": "computacion/global/Modelo_de_Practicas_Preprofesionales_RR_2023.pdf",
+  "documento_id": 1,
+  "version": 1,
+  "contexto": "texto completo de la sección (hasta 1.800 caracteres)"
 }
 ```
 
 - `scope` = `<carrera>|global` o `<carrera>|curso:<curso>`; la búsqueda filtra
-  por él según el modo elegido en el chat.
-- id = `<scope>|<archivo>|<pagina>|<trozo>`.
+  por él según el ámbito elegido en el chat.
+- id = `d<documento_id>v<version>-<n>`.
+- `contexto` es lo que lee el modelo de lenguaje; el texto corto es lo que se
+  convierte en vector (ver DISENO_ARQUITECTURA.md, "Fragmentación por secciones").
 
-El vínculo entre las dos bases es la **ruta** del archivo: `documento_versiones.ruta`
-coincide con `path` en los metadatos de ChromaDB.
+El vínculo entre las dos bases es el **id de documento y su versión**:
+ChromaDB solo contiene fragmentos de la versión vigente de documentos activos.
+`ingest.reconciliar()` lo comprueba y corrige al arrancar.
 
 ---
 
 ## 3. Si cambias de computadora
 
-Si `sistema.db` es de una versión anterior, se actualiza sola al arrancar. Luego
-`python arrancar.py` detecta el catálogo vacío y reindexa los PDF de
-`datos/docs/`. Para hacerlo a mano: `python -m nucleo.ingest`.
+Si `sistema.db` es de una versión anterior, se actualiza sola al arrancar.
+`python arrancar.py` registra los PDF de `datos/docs/` que falten en el catálogo
+y reconcilia ChromaDB. Para hacerlo a mano: `python -m nucleo.ingest`.
+La vigencia de cada documento se vuelve a indicar desde **Documentos**.

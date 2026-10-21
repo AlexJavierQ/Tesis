@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 4.
+MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 5.
 
 Es la FUENTE DE VERDAD del sistema. Todas las tablas viven en un solo archivo
 (datos/sistema.db) y se relacionan por claves foraneas (FK). Los vectores del
@@ -18,7 +18,8 @@ Tablas (15):
     usuario_carrera(usuario_id -> usuarios, carrera_id -> carreras)   N:M
     sesiones(token, usuario_id -> usuarios, creado_en, expira_en)
   DOCUMENTOS DEL RAG
-    documentos(id, carrera_id, curso_id (NULL = global), nombre, activo, creado_en)
+    documentos(id, carrera_id, curso_id (NULL = global), nombre, activo,
+               vigencia, creado_en)   <- vigencia: periodo al que se refiere la fuente
     documento_versiones(id, documento_id -> documentos, numero, ruta,
                         fragmentos, subido_por -> usuarios, subido_en,
                         restaurada_de)  <- numero de la version que se restauro
@@ -50,7 +51,7 @@ DB = os.path.join(os.path.dirname(BASE), "datos", "sistema.db")
 DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
 CONSULTAS_VIEJA = os.path.join(os.path.dirname(BASE), "datos", "consultas.db")
 
-VERSION_ESQUEMA = 4
+VERSION_ESQUEMA = 5
 ROLES = ("estudiante", "docente", "coordinacion", "administrador")
 FACULTAD_POR_DEFECTO = "Ingenierías y Arquitectura"
 CARRERA_POR_DEFECTO = "computacion"
@@ -154,6 +155,7 @@ def _crear_tablas(c):
         curso_id    INTEGER REFERENCES cursos(id) ON DELETE CASCADE,
         nombre      TEXT NOT NULL,
         activo      INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+        vigencia    TEXT,           -- p. ej. "Periodo abril-agosto 2024 (historico)"
         {_fecha("creado_en")}
     )""")
     # UNIQUE normal no sirve aqui: en SQLite dos NULL no se consideran iguales.
@@ -249,6 +251,7 @@ def _migrar_si_hace_falta(c):
       v2 -> v3: cambios aditivos. Las tablas nuevas las crea _crear_tablas;
                aqui solo se agrega la columna nueva. No se pierde nada.
       v3 -> v4: columnas del resumen de la memoria conversacional.
+      v4 -> v5: vigencia de cada documento.
     """
     version = c.execute("PRAGMA user_version").fetchone()[0]
     tablas = [f[0] for f in c.execute(
@@ -267,6 +270,9 @@ def _migrar_si_hace_falta(c):
         print("[bd] Migrando sistema.db a v4 (memoria conversacional).")
         c.execute("ALTER TABLE conversaciones ADD COLUMN resumen TEXT")
         c.execute("ALTER TABLE conversaciones ADD COLUMN resumen_hasta INTEGER NOT NULL DEFAULT 0")
+    if version in (2, 3, 4):
+        print("[bd] Migrando sistema.db a v5 (vigencia de documentos).")
+        c.execute("ALTER TABLE documentos ADD COLUMN vigencia TEXT")
 
 
 def _seed(c):
@@ -496,11 +502,15 @@ def cursos_de_docente(usuario):
 
 
 # ---------- documentos y versiones ----------
+# documento + su version vigente (la de numero mas alto) + su ambito
 _SQL_DOC = """
     SELECT d.id, d.nombre, d.activo, v.numero, v.ruta, v.fragmentos, v.subido_en,
-           (SELECT COUNT(*) FROM documento_versiones x WHERE x.documento_id = d.id)
+           (SELECT COUNT(*) FROM documento_versiones x WHERE x.documento_id = d.id),
+           ca.nombre, cu.nombre, d.vigencia
     FROM documentos d
     JOIN documento_versiones v ON v.documento_id = d.id
+    JOIN carreras ca ON d.carrera_id = ca.id
+    LEFT JOIN cursos cu ON d.curso_id = cu.id
     WHERE v.numero = (SELECT MAX(numero) FROM documento_versiones
                       WHERE documento_id = d.id)
 """
@@ -508,7 +518,8 @@ _SQL_DOC = """
 
 def _doc_dict(f):
     return {"id": f[0], "nombre": f[1], "activo": bool(f[2]), "version": f[3],
-            "ruta": f[4], "fragmentos": f[5], "subido_en": f[6], "versiones": f[7]}
+            "ruta": f[4], "fragmentos": f[5], "subido_en": f[6], "versiones": f[7],
+            "carrera": f[8], "curso": f[9], "vigencia": f[10] or ""}
 
 
 def documento(carrera, curso, nombre):
@@ -524,15 +535,14 @@ def documento(carrera, curso, nombre):
 def documento_por_id(doc_id):
     with transaccion() as c:
         f = c.execute(_SQL_DOC + " AND d.id=?", (doc_id,)).fetchone()
-        if not f:
-            return None
-        d = _doc_dict(f)
-        amb = c.execute("""SELECT ca.nombre, cu.nombre FROM documentos d
-                           JOIN carreras ca ON d.carrera_id = ca.id
-                           LEFT JOIN cursos cu ON d.curso_id = cu.id
-                           WHERE d.id=?""", (doc_id,)).fetchone()
-    d["carrera"], d["curso"] = amb
-    return d
+    return _doc_dict(f) if f else None
+
+
+def documento_de_ruta(ruta):
+    """El documento al que pertenece un archivo (de cualquier version), o None."""
+    with transaccion() as c:
+        doc_id = _id(c, "SELECT documento_id FROM documento_versiones WHERE ruta=?", (ruta,))
+    return documento_por_id(doc_id) if doc_id else None
 
 
 def documentos_de(carrera, curso=None):
@@ -547,11 +557,17 @@ def documentos_de(carrera, curso=None):
     return [_doc_dict(f) for f in filas]
 
 
+def todos_los_documentos():
+    """Todos los documentos con su version vigente (para reconciliar con ChromaDB)."""
+    with transaccion() as c:
+        return [_doc_dict(f) for f in c.execute(_SQL_DOC + " ORDER BY d.id")]
+
+
 def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None,
                       restaurada_de=None):
     """
     Registra una nueva version de un documento. Si el documento no existe,
-    lo crea (version 1). Devuelve el numero de version asignado.
+    lo crea (version 1). Devuelve (id del documento, numero de version).
     """
     caid = id_carrera(carrera)
     if not caid:
@@ -572,13 +588,22 @@ def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None,
                      (documento_id, numero, ruta, fragmentos, subido_por, restaurada_de)
                      VALUES (?,?,?,?,?,?)""",
                   (doc_id, numero, ruta, fragmentos, uid, restaurada_de))
-    return numero
+    return doc_id, numero
 
 
-def actualizar_fragmentos(ruta, fragmentos):
-    """Al reindexar, actualiza cuantos fragmentos genero la version vigente."""
+def quitar_version(doc_id, numero):
+    """Deshace el registro de una version (la ingesta lo usa si algo falla a mitad)."""
     with transaccion() as c:
-        c.execute("UPDATE documento_versiones SET fragmentos=? WHERE ruta=?", (fragmentos, ruta))
+        c.execute("DELETE FROM documento_versiones WHERE documento_id=? AND numero=?", (doc_id, numero))
+        if not _id(c, "SELECT 1 FROM documento_versiones WHERE documento_id=?", (doc_id,)):
+            c.execute("DELETE FROM documentos WHERE id=?", (doc_id,))
+
+
+def actualizar_fragmentos(doc_id, numero, fragmentos):
+    """Al reindexar, actualiza cuantos fragmentos genero una version."""
+    with transaccion() as c:
+        c.execute("UPDATE documento_versiones SET fragmentos=? WHERE documento_id=? AND numero=?",
+                  (fragmentos, doc_id, numero))
 
 
 def mover_version(ruta_vieja, ruta_nueva):
@@ -603,6 +628,20 @@ def cambiar_estado_documento(doc_id, activo):
         c.execute("UPDATE documentos SET activo=? WHERE id=?", (int(bool(activo)), doc_id))
 
 
+def cambiar_vigencia(doc_id, vigencia):
+    """Periodo o vigencia de la fuente (texto libre; vacio = sin indicar)."""
+    with transaccion() as c:
+        c.execute("UPDATE documentos SET vigencia=? WHERE id=?",
+                  ((vigencia or "").strip() or None, doc_id))
+
+
+def vigencias():
+    """{id de documento: vigencia} de los documentos que la tienen indicada."""
+    with transaccion() as c:
+        return {f[0]: f[1] for f in c.execute(
+            "SELECT id, vigencia FROM documentos WHERE vigencia IS NOT NULL")}
+
+
 def borrar_documento(doc_id):
     """Borra el documento (sus versiones caen por CASCADE). Devuelve las rutas de sus archivos."""
     with transaccion() as c:
@@ -610,14 +649,6 @@ def borrar_documento(doc_id):
             "SELECT ruta FROM documento_versiones WHERE documento_id=?", (doc_id,))]
         c.execute("DELETE FROM documentos WHERE id=?", (doc_id,))
     return rutas
-
-
-def esta_inactivo(ruta):
-    """True si la ruta pertenece a un documento desactivado (no se debe indexar)."""
-    with transaccion() as c:
-        return _id(c, """SELECT 1 FROM documento_versiones v JOIN documentos d
-                         ON v.documento_id = d.id WHERE v.ruta=? AND d.activo=0""",
-                   (ruta,)) is not None
 
 
 # ---------- bitacora (logs) ----------

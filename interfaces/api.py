@@ -93,6 +93,10 @@ class Estado(BaseModel):
     activo: bool
 
 
+class Vigencia(BaseModel):
+    vigencia: str = Field("", max_length=200)
+
+
 class Docentes(BaseModel):
     usuarios: List[str]
 
@@ -408,7 +412,9 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
     metricas.registrar(c.pregunta, r["con_respaldo"], c.carrera,
                        c.curso if r["modo"] != "general" else None, r["modo"],
                        usuario["usuario"] if usuario else None)
-    citas = [{"fuente": ci["fuente"], "pagina": ci["pagina"], "ref": ci["path"]}
+    # cada cita guarda documento y VERSION usados (trazabilidad historica)
+    citas = [{"fuente": ci["fuente"], "pagina": ci["pagina"], "seccion": ci["seccion"],
+              "documento_id": ci["documento_id"], "version": ci["version"], "ref": ci["path"]}
              for ci in r["citas"]]
 
     # persistencia del historial (solo si la conversacion es suya)
@@ -480,9 +486,10 @@ def _ambito(d):
 @app.get("/documentos")
 def listar_documentos(carrera: str, curso: Optional[str] = None,
                       authorization: str = Header(None)):
-    """Documentos de un ambito desde el catalogo (version vigente). Requiere sesion."""
-    _exigir(authorization)
-    return [{"id": d["id"], "nombre": d["nombre"], "ref": d["ruta"],
+    """Documentos de un ambito (version vigente). Solo quien gestiona ese ambito."""
+    actor = _exigir(authorization, "docente", "coordinacion")
+    _exigir_ambito_docs(actor, carrera, curso)
+    return [{"id": d["id"], "nombre": d["nombre"], "ref": d["ruta"], "vigencia": d["vigencia"],
              "activo": d["activo"], "version": d["version"], "versiones": d["versiones"],
              "fragmentos": d["fragmentos"], "subido_en": d["subido_en"]}
             for d in bd.documentos_de(carrera, curso)]
@@ -511,7 +518,10 @@ def subir_documento(carrera: str = Form(...),
     if len(contenido) > max_mb * 1024 * 1024:
         raise HTTPException(400, f"El PDF supera {max_mb} MB.")
 
-    r = ingest.guardar_documento(carrera, curso, nombre, contenido, actor["usuario"])
+    try:
+        r = ingest.guardar_documento(carrera, curso, nombre, contenido, actor["usuario"])
+    except ValueError as e:      # p. ej. PDF escaneado, sin texto
+        raise HTTPException(400, str(e))
     bd.log("subir_documento", f"{carrera}/{curso or 'global'}/{nombre} v{r['version']}",
            actor["usuario"])
     return {"ok": True, "archivo": nombre, **r}
@@ -552,6 +562,19 @@ def estado_documento(doc_id: int, e: Estado, authorization: str = Header(None)):
     return {"ok": True, "activo": e.activo}
 
 
+@app.patch("/documentos/{doc_id}/vigencia")
+def vigencia_documento(doc_id: int, v: Vigencia, authorization: str = Header(None)):
+    """
+    Periodo o vigencia de la fuente (p. ej. "Periodo abril-agosto 2024").
+    El asistente la menciona al citar fechas o plazos de ese documento.
+    """
+    actor = _exigir(authorization, "docente", "coordinacion")
+    d = _doc_gestionable(doc_id, actor)
+    bd.cambiar_vigencia(doc_id, v.vigencia)
+    bd.log("cambiar_vigencia", f"{_ambito(d)}: {v.vigencia.strip() or '(sin indicar)'}", actor["usuario"])
+    return {"ok": True}
+
+
 @app.delete("/documentos/{doc_id}")
 def borrar_documento(doc_id: int, authorization: str = Header(None)):
     """Elimina un documento con todas sus versiones."""
@@ -562,25 +585,36 @@ def borrar_documento(doc_id: int, authorization: str = Header(None)):
     return {"ok": True}
 
 
+def _archivo_permitido(authorization, ref):
+    """
+    Ruta del PDF pedido por una cita, si el usuario pertenece a la carrera del
+    documento. Asi nadie descarga documentos de carreras ajenas.
+    """
+    usuario = _exigir(authorization)
+    destino = _resolver_ruta(ref)
+    d = bd.documento_de_ruta(ref)
+    if not d or d["carrera"] not in usuario["carreras"]:
+        raise HTTPException(403, "No tienes acceso a ese documento.")
+    return destino
+
+
 @app.get("/documentos/pagina")
 def pagina_documento(ref: str = Query(...), pagina: int = 1,
                      authorization: str = Header(None)):
-    """PNG de una pagina del PDF (para el visor). Requiere sesion."""
-    _exigir(authorization)
-    destino = _resolver_ruta(ref)
+    """PNG de una pagina del PDF (para el visor de citas)."""
+    destino = _archivo_permitido(authorization, ref)
     total = pdfreader.num_paginas(destino)
     pagina = max(1, min(pagina, total))
     png = pdfreader.render_png(destino, pagina)
     return Response(content=png, media_type="image/png",
                     headers={"X-Total-Paginas": str(total),
-                             "Cache-Control": "public, max-age=3600"})
+                             "Cache-Control": "private, max-age=3600"})
 
 
 @app.get("/documentos/info")
 def info_documento(ref: str = Query(...), authorization: str = Header(None)):
     """Info del PDF (numero de paginas)."""
-    _exigir(authorization)
-    destino = _resolver_ruta(ref)
+    destino = _archivo_permitido(authorization, ref)
     return {"nombre": os.path.basename(destino), "paginas": pdfreader.num_paginas(destino)}
 
 

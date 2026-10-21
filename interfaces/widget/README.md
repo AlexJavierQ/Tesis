@@ -1,6 +1,6 @@
 # Widget embebible — Asistente de Prácticum
 
-Tercera propuesta de frontend del MVP, junto a `app.py` (Streamlit) y `web/` (React + Vite).
+Chat embebible para el portal institucional, complementario a la aplicación React (`interfaces/react/`).
 Las tres consumen **la misma API REST de FastAPI** y ninguna toca el núcleo (`rag.py`,
 `ingest.py`, `llm.py`). Esa es la tesis que este directorio demuestra: si el mismo backend
 soporta Python, React y JavaScript puro sin una sola modificación, el desacoplamiento es real
@@ -108,12 +108,11 @@ ese tamaño iOS hace zoom automático al enfocar.
 
 ## Cuándo conviene cada frontend
 
-| | Streamlit (`app.py`) | React (`web/`) | Widget (`widget/`) |
-|---|---|---|---|
-| **Público** | Coordinación, tribunal | Estudiantes y docentes | Estudiantes en el portal |
-| **Fuerte en** | Prototipar y demostrar rápido | Aplicación completa con gestión documental y métricas | Adopción: llega donde el usuario ya está |
-| **Coste de integración** | Servidor Python aparte | Build y despliegue estático | Una etiqueta `<script>` |
-| **Elegir cuando** | Se necesita iterar en horas | Se necesita una app propia y mantenible | El portal institucional ya existe y no se quiere migrar |
+| | React (`interfaces/react/`) | Widget (`interfaces/widget/`) |
+|---|---|---|
+| **Público** | Estudiantes, docentes, coordinación y administración | Estudiantes en el portal |
+| **Fuerte en** | Aplicación completa: historial, gestión documental, métricas | Adopción: llega donde el usuario ya está |
+| **Coste de integración** | Build y despliegue estático | Una etiqueta `<script>` |
 
 El argumento del widget no es técnico sino de adopción: la barrera más alta de un asistente
 universitario no es construirlo, es que el estudiante recuerde ir a él. Un widget elimina esa
@@ -124,9 +123,9 @@ barrera a cambio de renunciar a funcionalidad.
 Son deliberadas y conviene declararlas:
 
 - **Solo consulta.** No incluye subida de documentos, gestión de cursos ni métricas: eso vive en
-  React y Streamlit. El widget hace una cosa.
-- **Sin autenticación.** El sistema aún no la tiene. Cualquier visitante del portal puede
-  preguntar. Antes de producción hay que añadir autenticación en la API, no en el cliente.
+  React. El widget hace una cosa.
+- **Sin autenticación.** `/preguntar` es público a propósito para el portal: cualquier visitante
+  puede preguntar, pero no ve documentos ni historial. La gestión exige sesión en la API.
 - **Sin historial persistente.** La conversación se pierde al recargar; no hay almacenamiento
   local ni de sesión.
 - **Sin pruebas automatizadas ni tipado.** Al no haber build tampoco hay linter, transpilación

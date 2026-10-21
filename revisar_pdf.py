@@ -6,6 +6,8 @@ Reglas (ver documentacion/FORMATO_DOCUMENTOS.md):
   - Debe ser PDF con texto seleccionable (no escaneado).
   - Pesa menos de 20 MB.
   - Al menos el 70% de las paginas deben tener texto util.
+Ademas muestra las SECCIONES que detectara el sistema y cuantos fragmentos
+generara, para comprobar que el documento se dividira bien.
 
 Uso:  python revisar_pdf.py <ruta.pdf>
 """
@@ -89,6 +91,20 @@ def revisar(path):
         print("    o contiene muchos diagramas sin texto acompanante.")
         print("    Revisa la seccion 4 de FORMATO_DOCUMENTOS.md.")
         return False
+
+    # como lo dividira el sistema al indexarlo (el mismo codigo que usa la ingesta)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from nucleo import pdfreader, ingest
+    secciones = pdfreader.secciones(path)
+    fragmentos = ingest.fragmentar(path)
+    print(f"    Secciones detectadas: {len(secciones)}  ->  {len(fragmentos)} fragmentos")
+    for sec in secciones[:40]:
+        largo = sum(len(t) for _, t in sec["parrafos"])
+        print(f"      pag. {sec['pagina']:3d}  {largo:5d} caracteres  {sec['titulo'][:70] or '(texto antes del primer titulo)'}")
+    if len(secciones) <= 1:
+        print("    (Aviso: no se detectaron titulos. Las respuestas citaran paginas, no secciones;")
+        print("     conviene usar titulos claros o numerados. Ver FORMATO_DOCUMENTOS.md.)")
+    print()
 
     print("[OK] PDF APTO para subir al sistema.")
     if solo_imagen:

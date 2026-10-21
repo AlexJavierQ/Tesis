@@ -51,11 +51,6 @@ export default function Login({ onOk }) {
         <button type="submit" className="btn btn-primario" disabled={enviando}>
           {enviando ? "Entrando…" : "Entrar"}
         </button>
-
-        <div className="demo">
-          Usuarios de demostración: <code>estudiante</code>, <code>docente</code>,{" "}
-          <code>coord</code> y <code>admin</code>. Contraseña: <code>demo2026</code>.
-        </div>
       </form>
     </div>
   );

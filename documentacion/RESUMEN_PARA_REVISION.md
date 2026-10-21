@@ -4,6 +4,28 @@
 > perspectiva. Describe el estado **actual** del sistema (octubre 2026).
 > Al final hay preguntas concretas sobre las que me interesa una opinión.
 
+## 0. Cambios desde la revisión anterior
+
+El sistema ya **no usa documentos de demostración**: trabaja solo con material
+oficial (sección 1). Respuesta punto por punto a la revisión anterior:
+
+| Observación | Qué se hizo |
+|---|---|
+| 1. Integridad del versionado (archivos, SQLite y ChromaDB no son atómicos) | Validación del PDF antes de tocar nada; compensación (si falla un paso se deshacen los anteriores); `reconciliar()` al arrancar corrige diferencias entre catálogo y vectores. Probado con un fallo simulado. |
+| 2. Trazabilidad histórica | Cada fragmento guarda `documento_id` y `version`; las citas guardadas en el historial también. ChromaDB solo tiene la versión vigente. |
+| 3. Seguridad (cuentas demo, acceso a documentos) | Ya no se crean cuentas con contraseña conocida: solo un administrador inicial con contraseña de entorno o aleatoria. Listar documentos exige gestionar ese ámbito; ver páginas de un PDF exige pertenecer a su carrera. |
+| 4. Evaluación con métricas separadas | Pendiente (OE4). Las evaluaciones con el corpus de demo se archivaron en `evaluacion/historico/`. |
+| 5. Corpus oficial con procedencia y vigencia | Corpus oficial cargado. Cada documento tiene un campo **vigencia**; el asistente la menciona al citar fechas y advierte cuando un plazo es histórico. |
+| 6. Múltiples formatos | Pendiente; por ahora solo PDF con texto. |
+| 7. Diagramas y tablas a texto | Las tablas se leen fila por fila. Los diagramas de la capacitación se transcribieron a texto narrativo antes de cargarla. |
+| 8. Fragmentación por secciones | Implementada: títulos detectados por forma (tamaño o negrita + numeración), fragmentos cortos para buscar y sección completa para responder. |
+| 9. Memoria conversacional | Se mantiene ventana + resumen + reescritura; la memoria solo interpreta la pregunta. |
+| 10. Pruebas y reproducibilidad | `verificar.py` reescrito sobre el corpus oficial y `pruebas/integridad.py` nuevo; README y diagramas actualizados. |
+
+Además se agregó **búsqueda híbrida** (vectores + BM25) porque el modelo de
+embeddings ubicaba mal algunas secciones, y las **citas se ordenan según cuánto
+respaldan la respuesta** redactada.
+
 ## 1. Contexto
 
 **Trabajo de Integración Curricular (TIC)**, carrera de Computación, UTPL (Ecuador).
@@ -67,10 +89,18 @@ deriva a la coordinación en vez de inventar.
 
 ## 3. Motor RAG (nucleo/rag.py)
 
-**Ingesta:** cada PDF se lee por página, se trocea en fragmentos de 500
-caracteres con 80 de solape y se guarda en ChromaDB con metadatos
-`{fuente, pagina, scope, path}`. `scope` es `carrera|global` (reglamentos de
-la carrera) o `carrera|curso:X` (material de un curso).
+**Ingesta:** cada PDF se divide en secciones (título + contenido); los títulos
+se reconocen por tamaño de letra o por negrita con numeración, y las tablas se
+leen fila por fila. Se indexan fragmentos de 500 caracteres (solape 80)
+precedidos por el título de su sección, porque el modelo de embeddings solo lee
+~128 tokens; al responder, el modelo de lenguaje recibe la sección completa.
+Metadatos: `{fuente, pagina, seccion, scope, path, documento_id, version,
+contexto}`. `scope` es `carrera|global` (normativa de la carrera) o
+`carrera|curso:X` (material de un curso).
+
+**Búsqueda híbrida:** se combinan los mejores candidatos por significado
+(vectores) y por palabras clave (BM25) con Reciprocal Rank Fusion, se deja un
+fragmento por sección y se aplica el umbral semántico a todos.
 
 **Respuesta a una pregunta:**
 
@@ -128,7 +158,7 @@ mal respondida), el error se repetiría en todas las respuestas siguientes. En s
 lugar, el resumen tiene una sección fija "Datos del estudiante" con solo lo que
 el estudiante dijo de sí mismo, y se reconstruye a partir de los mensajes reales.
 
-### Medición del costo (evaluacion/medir_memoria.py)
+### Medición del costo (evaluacion/historico/medir_memoria.py, corpus de demostración)
 
 Las dos estrategias se probaron sobre las mismas 2 conversaciones guionadas de
 7 turnos cada una. Una de ellas tiene una referencia lejana: "volviendo a lo
@@ -169,7 +199,7 @@ Con estas cifras alcanza para unas 105 preguntas al día con concatenación y un
 Cuando se agota la cuota, el sistema no se cae: la reescritura vuelve a la
 concatenación y la respuesta pasa a modo degradado (muestra los fragmentos).
 
-## 5. Modelo de datos (SQLite, 15 tablas, esquema v4)
+## 5. Modelo de datos (SQLite, 15 tablas, esquema v5)
 
 | Grupo | Tablas |
 |---|---|
@@ -200,8 +230,8 @@ quita de ChromaDB sin borrarlo.
 
 | Rol | Puede | No puede |
 |---|---|---|
-| Administrador | configurar parámetros del sistema; gestionar todos los usuarios; ver la bitácora | gestionar contenido académico |
-| Coordinación | crear facultades, carreras y cursos; asignar docentes a cursos; subir reglamentos generales; gestionar estudiantes y docentes de sus carreras; ver métricas de la carrera | tocar la configuración; crear coordinadores o administradores |
+| Administrador | facultades y carreras; todos los usuarios (asigna a la coordinación sus carreras); parámetros del sistema; bitácora | gestionar documentos o cursos |
+| Coordinación | en sus carreras: cursos, asignación de docentes, normativa general, estudiantes y docentes, métricas | crear facultades o carreras; tocar la configuración; crear coordinadores o administradores |
 | Docente | subir, versionar, restaurar y activar/desactivar documentos **de sus cursos asignados**; ver sus métricas | crear cursos; subir reglamentos generales |
 | Estudiante | chat con historial persistente | — |
 
@@ -235,42 +265,62 @@ bitácora. La clave de API **no** es un parámetro: se queda fuera de la base de
 
 ## 9. Lo verificado hasta ahora
 
-- `verificar.py`: 9 pasos (importaciones, clave, índice, login, recuperación,
-  abstención fuera de dominio, respuesta con citas, métricas, integridad del modelo relacional).
-- Pruebas de la API: 26 casos de permisos por rol, validación de parámetros y
-  restauración de versiones, todos correctos.
-- Medición de la memoria (sección 4).
+- `python verificar.py` (9 pasos, sobre el corpus oficial y sin cuentas de prueba):
+  modelo relacional, coherencia catálogo↔ChromaDB, login con usuario temporal,
+  búsqueda híbrida (debe encontrar la sección 14.2), abstención fuera de
+  dominio, respuesta con cita a la página correcta y registro de métricas.
+- `python -m pruebas.integridad` (20 comprobaciones, curso y usuarios temporales):
+  PDF sin texto rechazado sin residuos; versiones y restauración; ChromaDB solo
+  con la versión vigente; activar/desactivar; **fallo simulado de la BD a mitad
+  de una subida** (archivo, catálogo e índice vuelven al estado anterior);
+  permisos sobre listados y páginas de PDF; citas con documento y versión.
+- Prueba manual con 8 preguntas reales sobre el corpus oficial: 6 correctas,
+  2 abstenciones correctas (pregunta ajena y costo de matrícula, que no está en
+  los documentos). Ejemplos: ponderación de la evaluación 10/60/30 desde la
+  Tabla 4; las 6 evidencias de la sección 14.2; "no hay evaluación de
+  recuperación" (13.2); plazos de postulación de 2024 presentados como históricos.
 
 ## 10. Limitaciones conocidas
 
-- **Sin OCR:** los PDF escaneados o las diapositivas que son solo imagen no
-  aportan texto (un documento real tenía alrededor del 50 % de páginas así).
-- **Corpus de demostración:** un reglamento sintético corto y una presentación real de la UTPL. Falta el corpus oficial completo.
-- Alucinación residual en preguntas **cercanas** al dominio que pasan el umbral
-  pero cuya respuesta exacta no está en los documentos.
-- El troceo es por número de caracteres, no por estructura (secciones o artículos).
-- SQLite admite un solo escritor a la vez: suficiente para el piloto, no para miles de usuarios simultáneos.
-- La evaluación por palabras clave de la medición de memoria es aproximada; falta RAGAS.
-- La reescritura añade una llamada al modelo por turno (+1 s y +33 % de tokens).
-- Cuota gratuita de Groq: 200.000 tokens al día (unas 80 preguntas con la memoria nueva).
+- **Corpus pequeño:** 2 documentos oficiales (Resolución Rectoral de 26 páginas
+  y una capacitación de Prácticum 2 transcrita a texto). Faltan sílabos y
+  normativa de otras carreras.
+- **Datos que no coinciden entre fuentes:** la Resolución fija 384 h de
+  prácticas laborales para Ingeniería y 240 h para Licenciatura; la
+  capacitación indica 96 h (Prácticum 1) + 144 h (Prácticum 2) = 240 h, que
+  coincide con Licenciatura. El sistema muestra ambas fuentes; falta confirmar
+  con la carrera cuál aplica a Computación.
+- **Modelo de embeddings débil para algunas paráfrasis:** MiniLM ubicó la
+  sección correcta en el puesto 12 en un caso; la búsqueda híbrida lo corrige,
+  pero conviene comparar con `multilingual-e5` sobre el corpus oficial.
+- **Sin OCR:** un PDF escaneado se rechaza al subirlo (no se indexa a medias).
+- **Tablas complejas:** se leen fila por fila; las de varias columnas
+  combinadas (Tabla 1) quedan legibles pero sin encabezados por celda.
+- **Cuota de Groq:** 200.000 tokens/día y 8.000 tokens/min en el plan gratuito.
+  Con 5 secciones de contexto, varias preguntas seguidas pueden superar el
+  límite por minuto: el sistema responde en modo degradado (muestra fragmentos).
+- SQLite admite un solo escritor a la vez: suficiente para el piloto.
 
 ## 11. Pendiente
 
-1. OE4: evaluación con RAGAS (fidelidad, relevancia, precisión del contexto) y piloto con estudiantes y encuesta SUS.
-2. Cargar el corpus oficial.
-3. Mejorar el documento escrito del TIC: tiempo verbal uniforme, introducción y síntesis por capítulo, capítulos conectados.
+1. **OE4 — evaluación:** conjunto independiente de 60–100 preguntas sobre el
+   corpus oficial (directas, de varias secciones, conflicto entre fuentes, sin
+   respuesta) y conversaciones de varios turnos; métricas separadas de
+   recuperación, fidelidad, exactitud, relevancia y abstención (RAGAS);
+   latencia p50/p95 de extremo a extremo; piloto con estudiantes y encuesta SUS.
+2. Confirmar con la carrera las horas que aplican a Computación.
+3. Comparar MiniLM con `multilingual-e5` y el tamaño de fragmento sobre el corpus oficial.
+4. Documento escrito del TIC: tiempo verbal uniforme, introducción y síntesis
+   por capítulo, capítulos conectados.
 
 ## 12. Preguntas para el revisor
 
-1. ¿La memoria con resumen y reescritura justifica su costo (+33 % tokens, +1 s)
-   frente a la concatenación, viendo la medición? ¿Convendría reescribir solo
-   cuando la regla detecta un seguimiento, para ahorrar llamadas? (Contra: la
-   regla es justamente lo que falla con las referencias lejanas.)
-2. Con un tope de 200.000 tokens al día en el plan gratuito, ¿qué recomendarías
-   para un piloto: otro proveedor, un modelo más pequeño solo para reescribir, o caché?
-3. ¿Es correcta la decisión de no tener "notas importantes" persistentes por el riesgo de propagar errores?
-4. ¿El umbral fijo de distancia (0.65) es razonable, o convendría un re-ranker o un umbral relativo?
-5. ¿El modelo de datos está bien normalizado para el alcance? ¿Sobra o falta algo?
-6. ¿El esquema de permisos por rol tiene huecos?
-7. ¿Qué métricas de RAGAS y qué tamaño de conjunto de preguntas serían defendibles para un TIC?
-8. Con un corpus pequeño, ¿convendría trocear por estructura (artículos o secciones) en vez de por caracteres?
+1. ¿Es adecuada la fragmentación "indexar fragmentos cortos, entregar la
+   sección completa" para estos documentos, o convendría otra estrategia?
+2. ¿La búsqueda híbrida (vectores + BM25 con RRF, filtrada por el umbral
+   semántico) es una solución defendible, o conviene un re-ranker?
+3. ¿Cómo diseñarías el conjunto de evaluación con solo 2 documentos oficiales
+   para que no sea autocomplaciente?
+4. ¿Cómo debería responder el asistente ante el conflicto de horas
+   (Ingeniería 384 h vs. capacitación 144 h) mientras la carrera no lo confirme?
+5. ¿Qué falta para considerar el control de acceso listo para un piloto real?

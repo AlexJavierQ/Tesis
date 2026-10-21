@@ -30,14 +30,14 @@ son decisiones deliberadas, no omisiones: cada exclusión tiene un motivo.
 - **No** se identifica quién preguntó.
 
 ### 1.4 Autenticación por rol
-- Tres roles con permisos distintos: estudiante, docente, coordinación.
+- Cuatro roles con permisos distintos: estudiante, docente, coordinación y
+  administrador.
 - Contraseñas hasheadas con PBKDF2-HMAC-SHA256, 200.000 iteraciones,
   sal aleatoria por usuario.
 - Sesiones basadas en tokens opacos revocables.
 
-### 1.5 Tres interfaces sobre el mismo backend
-- Streamlit (Python puro, prototipo).
-- React 19 + Vite (aplicación web de referencia).
+### 1.5 Dos interfaces sobre el mismo backend
+- React 19 + Vite (aplicación web completa).
 - Widget embebible en JavaScript puro (integración en portal existente,
   sin login).
 

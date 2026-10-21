@@ -1,3 +1,7 @@
+> Registro histórico de la elección del proveedor de LLM (etapa de prototipo con
+> Streamlit). El sistema actual usa Groq `openai/gpt-oss-20b`, configurable por el
+> administrador.
+
 # Evaluación de LLMs por cuota gratuita (sin perder calidad)
 
 Motivo: Gemini Flash-Lite con la key de prueba (`AQ.`) daba solo **20 req/día**.

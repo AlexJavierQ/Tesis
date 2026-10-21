@@ -4,7 +4,8 @@ ADAPTADOR de base de datos vectorial (ChromaDB).
 
 Guarda cada fragmento junto con:
   - su vector (embedding)
-  - metadatos: archivo de origen, pagina, ambito (scope)
+  - metadatos: archivo de origen, pagina, seccion, ambito (scope), documento y
+    version de la que sale, y el texto completo de su seccion (contexto)
   - un id unico
 
 Y sabe buscar por similitud: dada una pregunta, devuelve los k fragmentos
@@ -52,18 +53,31 @@ def buscar(pregunta, k=8, filtro=None):
         where=filtro,
     )
     salida = []
-    for texto, meta, distancia in zip(
+    for vid, texto, meta, distancia in zip(
+        resultado["ids"][0],
         resultado["documents"][0],
         resultado["metadatas"][0],
         resultado["distances"][0],
     ):
-        salida.append({"texto": texto, "meta": meta, "distancia": distancia})
+        salida.append({"texto": texto, "meta": {**meta, "_id": vid}, "distancia": distancia})
     return salida
 
 
 def borrar(filtro):
     """Elimina fragmentos que cumplan el filtro (por ejemplo un documento entero)."""
     coleccion().delete(where=filtro)
+
+
+def borrar_ids(ids):
+    """Elimina fragmentos por su id."""
+    if ids:
+        coleccion().delete(ids=list(ids))
+
+
+def metadatos():
+    """{id: metadatos} de TODOS los fragmentos (para revisar que coincidan con el catalogo)."""
+    datos = coleccion().get(include=["metadatas"])
+    return dict(zip(datos["ids"], datos["metadatas"]))
 
 
 def contar():

@@ -12,7 +12,7 @@ Cada parametro guarda su tipo y su rango permitido, para no aceptar un
 valor que rompa el sistema (p. ej. un umbral de 5 o un TOP_K de 0).
 
 OJO: la API key del LLM NO es un parametro. Es un secreto y sigue en
-.streamlit/secrets.toml (o en variables de entorno), fuera de la BD.
+secretos.toml (o en variables de entorno), fuera de la BD.
 """
 from nucleo import bd
 
@@ -23,6 +23,9 @@ DEFECTOS = {
         "(se abstiene más); más alto = responde más, con más riesgo de inventar."),
     "top_k": ("8", "entero", 1, 20,
         "Cuántos fragmentos se recuperan por ámbito en cada pregunta."),
+    "secciones_contexto": ("5", "entero", 1, 8,
+        "Cuántas secciones completas de los documentos lee el modelo para responder. "
+        "Más secciones dan más contexto, pero gastan más tokens."),
     "max_citas": ("3", "entero", 1, 10,
         "Cuántas fuentes (archivo y página) se muestran bajo cada respuesta."),
     "modelo_llm": ("openai/gpt-oss-20b", "texto", None, None,
@@ -48,10 +51,12 @@ DEFECTOS = {
         "texto", None, None,
         "Lo que responde el asistente cuando la respuesta no está en los documentos."),
     "mensaje_ayuda": (
-        "Soy el asistente de Practicum de la UTPL. Respondo con los reglamentos y "
-        "silabos oficiales. Preguntame por ejemplo: cuantas horas necesitas, cual es "
-        "el plazo del informe, que formato usar, cual es la nota minima o los "
-        "prerrequisitos. Si algo no esta en los documentos, te derivo a la coordinacion.",
+        "Soy el asistente de Practicum de la UTPL. Respondo con la normativa y los "
+        "documentos oficiales de practicas preprofesionales, citando de donde sale "
+        "cada dato. Preguntame por ejemplo: cuantas horas de practicas tiene tu "
+        "carrera, que evidencias se presentan, como se evalua el practicum o como "
+        "postular a una plaza. Si algo no esta en los documentos, te derivo a la "
+        "coordinacion.",
         "texto", None, None,
         "Respuesta a saludos y a pedidos de ayuda (\"hola\", \"¿qué puedes hacer?\")."),
 }
@@ -68,6 +73,7 @@ AREAS = [
      "Cómo se encuentran los fragmentos que respaldan cada respuesta.",
      [("umbral_similitud", "Umbral de similitud"),
       ("top_k", "Fragmentos por búsqueda"),
+      ("secciones_contexto", "Secciones que lee el modelo"),
       ("max_citas", "Citas por respuesta")]),
     ("modelo", "Modelo de IA",
      "Qué modelo redacta las respuestas y con cuánta libertad.",

@@ -1,29 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-Carga de configuracion (API keys del LLM).
+Carga de configuracion secreta (API key del modelo de lenguaje).
 
-Prioridad: variables de entorno > archivo .streamlit/secrets.toml
+Prioridad: variables de entorno > archivo secretos.toml (raiz del proyecto).
 Asi el servidor de produccion puede inyectar la key sin editar archivos.
+Por compatibilidad tambien se lee la ubicacion antigua .streamlit/secrets.toml.
+El archivo de secretos NUNCA se sube al repositorio (esta en .gitignore).
 """
 import os
 
-BASE = os.path.dirname(__file__)
-SECRETS = os.path.join(os.path.dirname(BASE), ".streamlit", "secrets.toml")
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ARCHIVOS = [
+    os.path.join(BASE, "secretos.toml"),
+    os.path.join(BASE, ".streamlit", "secrets.toml"),   # ubicacion antigua
+]
 
 
 def cargar():
-    """Lee secrets.toml y vuelca los valores al entorno (sin pisar los existentes)."""
-    if not os.path.exists(SECRETS):
-        return
+    """Lee el primer archivo de secretos que exista y vuelca sus valores al entorno."""
     try:
         import tomllib  # Python 3.11+
     except ImportError:
         return
-    with open(SECRETS, "rb") as f:
-        datos = tomllib.load(f)
-    for clave in ("GROQ_API_KEY", "LLM_PROVIDER"):
-        if clave in datos and str(datos[clave]).strip():
-            os.environ.setdefault(clave, str(datos[clave]))
+    for ruta in ARCHIVOS:
+        if os.path.exists(ruta):
+            with open(ruta, "rb") as f:
+                datos = tomllib.load(f)
+            for clave in ("GROQ_API_KEY", "ADMIN_PASSWORD"):
+                if clave in datos and str(datos[clave]).strip():
+                    os.environ.setdefault(clave, str(datos[clave]))
+            return
 
 
 def hay_key():

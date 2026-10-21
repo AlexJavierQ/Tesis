@@ -353,11 +353,6 @@ input[type="checkbox"] {
 .caja-login h1 { font-size: 23px; margin-top: 14px; }
 .caja-login .subtitulo { color: var(--texto-2); margin-top: 4px; }
 .caja-login .btn { height: 46px; width: 100%; font-size: 15px; }
-.demo {
-  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: var(--radio);
-  padding: 12px 14px; font-size: 13.5px; color: var(--texto-2);
-}
-.demo code { font-family: inherit; font-weight: 600; color: var(--texto); }
 .error-formulario {
   display: flex; gap: 8px; align-items: center;
   background: var(--peligro-suave); color: var(--peligro);
@@ -440,6 +435,7 @@ input[type="checkbox"] {
 .citas { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--borde); }
 .citas-titulo { font-size: 13px; font-weight: 650; color: var(--texto-2); margin-bottom: 8px; }
 .citas-lista { display: flex; flex-wrap: wrap; gap: 8px; }
+.cita small { color: var(--texto-3); font-size: 12px; }
 .cita {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 10px; border-radius: 8px;
@@ -583,3 +579,11 @@ input[type="checkbox"] {
 
 .tabla tr.fila-edicion td { background: var(--superficie-2); padding: 18px 20px; }
 .tabla tr.fila-edicion:hover { background: transparent; }
+
+/* vigencia de un documento: fila propia bajo sus datos */
+.vigencia {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 2px 0 16px 56px; font-size: 13.5px; color: var(--texto-2);
+}
+.vigencia svg { color: var(--texto-3); flex-shrink: 0; }
+.vigencia b { font-weight: 600; color: var(--texto); }

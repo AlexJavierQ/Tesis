@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   FileText, Upload, History, Power, Trash2, RotateCcw, FolderOpen, Library, BookOpen, GraduationCap,
+  CalendarRange, Pencil,
 } from "lucide-react";
 import { api } from "../../api";
 import { fecha, nombre, plural } from "../../formato";
@@ -92,6 +93,20 @@ export default function Documentos({ usuario, avisar, fallar }) {
     } catch (err) { fallar(err.message); }
   }
 
+  async function editarVigencia(d) {
+    const texto = prompt(
+      `Vigencia o período de "${d.nombre}".\n` +
+      "El asistente la menciona cuando cita fechas o plazos de este documento.\n" +
+      "Ejemplo: Período abril-agosto 2024 (fechas históricas)",
+      d.vigencia);
+    if (texto === null) return;
+    try {
+      await api.cambiarVigencia(d.id, texto);
+      avisar(`Vigencia de "${d.nombre}" actualizada.`);
+      recargar();
+    } catch (err) { fallar(err.message); }
+  }
+
   async function verVersiones(d) {
     if (versiones[d.id]) {                         // si ya esta abierta, se cierra
       const copia = { ...versiones };
@@ -156,7 +171,7 @@ export default function Documentos({ usuario, avisar, fallar }) {
                 <div className={"fila" + (d.activo ? "" : " apagada")}>
                   <div className="fila-icono"><FileText size={20} /></div>
                   <div className="fila-cuerpo">
-                    <div className="fila-titulo">{d.nombre}</div>
+                    <div className="fila-titulo" title={d.nombre}>{d.nombre}</div>
                     <div className="fila-meta">
                       <span>Versión {d.version}</span>
                       <span>{plural(d.fragmentos, "fragmento")}</span>
@@ -177,6 +192,15 @@ export default function Documentos({ usuario, avisar, fallar }) {
                       <Trash2 size={16} />
                     </button>
                   </div>
+                </div>
+
+                <div className="vigencia">
+                  <CalendarRange size={15} />
+                  <span><b>Vigencia:</b> {d.vigencia || "sin indicar"}</span>
+                  <button className="btn btn-fantasma btn-chico" onClick={() => editarVigencia(d)}
+                          aria-label={`Editar la vigencia de ${d.nombre}`}>
+                    <Pencil size={13} />Editar
+                  </button>
                 </div>
 
                 {versiones[d.id] && (
