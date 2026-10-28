@@ -29,6 +29,7 @@ Estructura de carpetas:
 """
 import os
 import glob
+import json
 import uuid
 
 from nucleo import pdfreader, vectorstore, bd
@@ -319,6 +320,12 @@ def indexar_todo():
     if not os.path.isdir(DOCS):
         print(f"No existe la carpeta {DOCS}")
         return
+    # vigencias del corpus versionadas junto a los PDF (la BD no viaja en git)
+    ruta_vigencias = os.path.join(DOCS, "vigencias.json")
+    vigencias = {}
+    if os.path.exists(ruta_vigencias):
+        with open(ruta_vigencias, encoding="utf-8") as f:
+            vigencias = json.load(f)
     for carrera in sorted(os.listdir(DOCS)):
         if not os.path.isdir(os.path.join(DOCS, carrera)):
             continue
@@ -337,7 +344,9 @@ def indexar_todo():
                 except ValueError as e:
                     print(f"  [omitido] {nombre}: {e}")
                     continue
-                bd.registrar_version(carrera, curso, nombre, _rel(p), len(fragmentos))
+                doc_id, _ = bd.registrar_version(carrera, curso, nombre, _rel(p), len(fragmentos))
+                if vigencias.get(_rel(p)):
+                    bd.cambiar_vigencia(doc_id, vigencias[_rel(p)])
                 print(f"  [registrado] {_scope(carrera, curso)} {nombre}")
     informe = reconciliar()
     print(f"  reindexados: {informe['reindexados'] or 'ninguno'} | "

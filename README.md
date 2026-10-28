@@ -56,7 +56,10 @@ python arrancar.py
 ```
 
 `arrancar.py` indexa los PDF si hace falta, revisa que el índice coincida con
-el catálogo, levanta la API (puerto 8000) y React (puerto 5173).
+el catálogo, levanta la API (puerto 8000) y React (puerto 5173). En una
+instalación nueva registra los PDF de `datos/docs/` con la vigencia indicada en
+`datos/docs/vigencias.json`. Requiere Node.js para React, y la primera vez
+descarga el modelo de embeddings (~470 MB), así que necesita internet.
 
 **Primer acceso:** si la base de datos no tiene usuarios, se crea `admin`. Su
 contraseña es `ADMIN_PASSWORD` (en `secretos.toml`) o, si no la defines, una al
