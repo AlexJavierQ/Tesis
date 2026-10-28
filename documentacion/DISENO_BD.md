@@ -13,6 +13,10 @@ subcarpeta `_versiones/`.
 
 ![Modelo de datos](modelo_bd_sql.png)
 
+El diagrama se genera con `python documentacion/generar_modelo_bd.py` y
+dibuja las 19 claves foráneas de `nucleo/bd.py`: línea continua si la FK es
+obligatoria (NOT NULL) y discontinua si admite NULL.
+
 ---
 
 ## 1. Base relacional (`sistema.db`)
