@@ -34,13 +34,6 @@ Tablas (15):
     consultas(id, carrera_id, curso_id, usuario_id, modo, pregunta, respondida, creado_en)
     logs(id, usuario_id, accion, detalle, creado_en)
 
-ROBUSTEZ:
-  - Fechas declaradas como DATETIME, con valor por defecto y un CHECK que
-    rechaza cualquier texto que no sea una fecha valida.
-  - CHECK en los campos con valores cerrados (activo 0/1, rol del mensaje,
-    modo de consulta, formato de correo).
-  - Claves foraneas activas en cada conexion y ON DELETE definido en cada una.
-  - Cada operacion corre en una TRANSACCION: o se guarda todo o nada.
 """
 import os
 import sqlite3

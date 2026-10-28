@@ -22,10 +22,6 @@ Hay dos estrategias (el administrador elige con el parametro memoria_modo):
    Con ese contexto, el modelo REESCRIBE la pregunta para que se entienda
    sola. Esa pregunta reescrita es la que se busca en los documentos.
 
-IMPORTANTE (anti-alucinacion): la memoria sirve para ENTENDER la pregunta,
-nunca como fuente de la respuesta. El prompt de respuesta sigue recibiendo
-solo los fragmentos de los documentos; el resumen no guarda cifras ni reglas,
-solo los temas tratados y lo que el estudiante dijo de si mismo.
 """
 from nucleo import historial, llm, parametros
 
