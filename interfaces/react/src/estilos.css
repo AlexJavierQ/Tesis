@@ -587,3 +587,56 @@ input[type="checkbox"] {
 }
 .vigencia svg { color: var(--texto-3); flex-shrink: 0; }
 .vigencia b { font-weight: 600; color: var(--texto); }
+
+
+/* V1: visor de citas con acceso autenticado; no se exponen tokens en URLs. */
+.cita-boton {
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  border: 1px solid var(--borde, #d5dde5);
+}
+.cita-boton:hover:not(:disabled) { filter: brightness(.94); }
+.cita-boton:focus-visible { outline: 3px solid #2469a8; outline-offset: 2px; }
+.cita-boton:disabled { cursor: not-allowed; opacity: .6; }
+.visor-fuente-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(14, 25, 37, .65);
+  padding: 18px;
+}
+.visor-fuente {
+  width: min(900px, 100%);
+  height: min(90vh, 980px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--fondo, #fff);
+  color: var(--texto, #172334);
+  box-shadow: 0 12px 48px rgba(0,0,0,.35);
+}
+.visor-fuente-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--borde, #d5dde5);
+}
+.visor-fuente-cabecera strong { overflow-wrap: anywhere; }
+.visor-fuente-cabecera p { margin: 4px 0 0; font-size: .85rem; }
+.visor-fuente-imagen {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  width: auto;
+  max-height: calc(90vh - 96px);
+  margin: auto;
+  object-fit: contain;
+  overflow: auto;
+}
+.visor-fuente-estado { margin: auto; padding: 28px; text-align: center; }
