@@ -38,6 +38,42 @@ export default function Chat({ carrera }) {
   const [conversaciones, setConversaciones] = useState([]);
   const [convActual, setConvActual] = useState(null);  // id de la conversacion abierta
   const finHilo = useRef(null);
+  const [fuenteAbierta, setFuenteAbierta] = useState(null);
+  const urlFuente = useRef(null);
+  const solicitudFuente = useRef(0);
+
+  // Liberar URLs locales al cerrar o salir de la pantalla.
+  useEffect(() => () => {
+    solicitudFuente.current += 1;
+    if (urlFuente.current) URL.revokeObjectURL(urlFuente.current);
+  }, []);
+
+  function cerrarFuente() {
+    solicitudFuente.current += 1;
+    if (urlFuente.current) URL.revokeObjectURL(urlFuente.current);
+    urlFuente.current = null;
+    setFuenteAbierta(null);
+  }
+
+  async function abrirFuente(cita) {
+    if (!cita.ref) return;
+    cerrarFuente();
+    const solicitud = ++solicitudFuente.current;
+    setFuenteAbierta({ cita, cargando: true, url: null, error: null });
+    try {
+      const blob = await api.paginaDocumento(cita.ref, cita.pagina);
+      const url = URL.createObjectURL(blob);
+      if (solicitudFuente.current !== solicitud) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      urlFuente.current = url;
+      setFuenteAbierta({ cita, cargando: false, url, error: null });
+    } catch (error) {
+      if (solicitudFuente.current === solicitud)
+        setFuenteAbierta({ cita, cargando: false, url: null, error: error.message });
+    }
+  }
 
   useEffect(() => {
     if (carrera) api.cursos(carrera).then((cs) => {
@@ -198,10 +234,12 @@ export default function Chat({ carrera }) {
                         <div className="citas-titulo">Fuentes</div>
                         <div className="citas-lista">
                           {m.citas.map((c, j) => (
-                            <span key={j} className="cita" title={c.seccion || undefined}>
+                            <button key={j} type="button" className="cita cita-boton"
+                                    title={c.seccion || "Abrir fuente documental"}
+                                    onClick={() => abrirFuente(c)} disabled={!c.ref}>
                               <FileText size={14} />{c.fuente}, pág. {c.pagina}
                               {c.version && <small>versión {c.version}</small>}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -256,6 +294,32 @@ export default function Chat({ carrera }) {
           </form>
         </div>
       </section>
+      {fuenteAbierta && (
+        <div className="visor-fuente-fondo" role="presentation">
+          <div className="visor-fuente" role="dialog" aria-modal="true" aria-label="Fuente documental">
+            <div className="visor-fuente-cabecera">
+              <div>
+                <strong>{fuenteAbierta.cita.fuente}</strong>
+                <p>Página {fuenteAbierta.cita.pagina}
+                  {fuenteAbierta.cita.version ? " · versión " + fuenteAbierta.cita.version : ""}
+                </p>
+              </div>
+              <button type="button" className="btn btn-secundario" onClick={cerrarFuente}>
+                Cerrar
+              </button>
+            </div>
+            {fuenteAbierta.cargando && <p className="visor-fuente-estado">Cargando página autorizada…</p>}
+            {fuenteAbierta.error && (
+              <p className="visor-fuente-estado" role="alert">{fuenteAbierta.error}</p>
+            )}
+            {fuenteAbierta.url && (
+              <img src={fuenteAbierta.url}
+                   alt={`Página ${fuenteAbierta.cita.pagina} de ${fuenteAbierta.cita.fuente}`}
+                   className="visor-fuente-imagen" />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
