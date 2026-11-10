@@ -15,7 +15,7 @@ Que comprueba:
   4. Desactivar quita los vectores; activar los devuelve.
   5. Si la BD falla a mitad de una subida, archivos y catalogo vuelven a como estaban.
   6. Permisos: quien puede listar documentos y ver paginas de PDF.
-  7. Las citas del chat guardan documento, version y seccion.
+  7. Las citas del chat guardan documento, version y seccion, y abren esa version.
 """
 import glob
 import hashlib
@@ -30,7 +30,7 @@ import fitz  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from interfaces.api import app  # noqa: E402
-from nucleo import auth, bd, ingest, rag, vectorstore  # noqa: E402
+from nucleo import auth, bd, ingest, metricas, rag, vectorstore  # noqa: E402
 
 CARRERA = bd.CARRERA_POR_DEFECTO
 CURSO = "zz prueba de integridad"
@@ -67,6 +67,9 @@ def subir(cabecera, nombre, contenido):
 
 def main():
     fragmentos_antes = vectorstore.contar()
+    eventos_antes = metricas.contar()
+    with bd.transaccion() as c:
+        ultimo_evento = c.execute("SELECT IFNULL(MAX(id), 0) FROM consulta_eventos").fetchone()[0]
     for rol, u in USUARIOS.items():
         auth.crear_usuario(u, f"Prueba {rol}", f"{u}@prueba.local", clave, rol,
                            [] if rol == "administrador" else [CARRERA])
@@ -122,17 +125,21 @@ def main():
         chk("catalogo e indice coherentes", ingest.reconciliar()["reindexados"] == [])
 
         print("\n6. Permisos")
-        ref = bd.documentos_de(CARRERA)[0]["ruta"]
+        general = bd.documentos_de(CARRERA)[0]
+        pagina = f"/documentos/{general['id']}/versiones/{general['version']}/paginas/1"
         chk("estudiante no lista documentos",
             cl.get("/documentos", params={"carrera": CARRERA}, headers=es).status_code == 403)
         chk("docente no lista la normativa general",
             cl.get("/documentos", params={"carrera": CARRERA}, headers=do).status_code == 403)
         chk("estudiante de la carrera ve la pagina citada",
-            cl.get("/documentos/pagina", params={"ref": ref, "pagina": 1}, headers=es).status_code == 200)
+            cl.get(pagina, headers=es).status_code == 200)
         chk("administrador sin carreras no ve archivos",
-            cl.get("/documentos/info", params={"ref": ref}, headers=ad).status_code == 403)
-        chk("una ruta manipulada se rechaza",
-            cl.get("/documentos/info", params={"ref": "../../secretos.toml"}, headers=es).status_code in (400, 404))
+            cl.get(pagina, headers=ad).status_code == 403)
+        chk("docente no ve documentos fuera de sus cursos",
+            cl.get(pagina, headers=do).status_code == 403)
+        chk("sin sesion no se sirve ninguna pagina", cl.get(pagina).status_code == 401)
+        chk("una version inexistente no se sirve",
+            cl.get(f"/documentos/{general['id']}/versiones/999/paginas/1", headers=es).status_code == 404)
 
         print("\n7. Trazabilidad de las citas")
         r = cl.post("/preguntar", json={"pregunta": "¿El prácticum tiene evaluación de recuperación?",
@@ -141,18 +148,23 @@ def main():
             print("  AVISO el modelo no respondio (limite de Groq); se revisan igual las citas")
         chk("cada cita guarda documento, version y seccion",
             r["citas"] and all(c.get("documento_id") and c.get("version") and "seccion" in c for c in r["citas"]))
+        chk("la respuesta no expone rutas de archivos", not any("ref" in c or "path" in c for c in r["citas"]))
+        chk("cada cita abre la pagina de su version",
+            all(cl.get(f"/documentos/{c['documento_id']}/versiones/{c['version']}/paginas/{c['pagina']}",
+                       headers=es).status_code == 200 for c in r["citas"]))
+        chk("la consulta dejo un evento sin pregunta ni usuario", metricas.contar() == eventos_antes + 1)
     finally:
         d = bd.documento(CARRERA, CURSO, "guia.pdf")
         if d:
             ingest.borrar_documento(d["id"])
         with bd.transaccion() as c:
             c.execute("DELETE FROM cursos WHERE nombre=?", (CURSO,))
-            c.execute("DELETE FROM consultas WHERE usuario_id IS NULL AND pregunta LIKE '%evaluación de recuperación%'")
+            # los eventos de analitica no tienen usuario: se quitan los creados por esta prueba
+            c.execute("DELETE FROM consulta_eventos WHERE id > ?", (ultimo_evento,))
         for u in USUARIOS.values():
             uid = bd.id_usuario(u)
             if uid:
                 with bd.transaccion() as c:
-                    c.execute("DELETE FROM consultas WHERE usuario_id=?", (uid,))
                     c.execute("DELETE FROM logs WHERE usuario_id=?", (uid,))
             auth.borrar_usuario(u)
         shutil.rmtree(CARPETA, ignore_errors=True)
@@ -160,6 +172,8 @@ def main():
     print("\n8. Limpieza")
     chk("la base vectorial quedo como estaba", vectorstore.contar() == fragmentos_antes,
         f"{fragmentos_antes} -> {vectorstore.contar()}")
+    chk("la analitica quedo como estaba", metricas.contar() == eventos_antes,
+        f"{eventos_antes} -> {metricas.contar()}")
     print("\nRESULTADO:", "todo correcto" if not fallos else f"{len(fallos)} fallos: {fallos}")
     sys.exit(1 if fallos else 0)
 

@@ -53,14 +53,18 @@ with bd.transaccion() as c:
     tablas = {f[0] for f in c.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
     huerfanas = c.execute("PRAGMA foreign_key_check").fetchall()
+    version = c.execute("PRAGMA user_version").fetchone()[0]
 esperadas = {"facultades", "carreras", "cursos", "curso_docente", "roles", "usuarios",
              "usuario_carrera", "sesiones", "documentos", "documento_versiones",
-             "conversaciones", "mensajes", "consultas", "logs", "parametros"}
+             "conversaciones", "mensajes", "citas_mensaje", "consulta_eventos",
+             "consultas", "logs", "parametros"}
 if esperadas - tablas:
     fallo(f"Faltan tablas: {esperadas - tablas}")
+if version != bd.VERSION_ESQUEMA:
+    fallo(f"El esquema esta en la version {version}; se esperaba la {bd.VERSION_ESQUEMA}.")
 if huerfanas:
     fallo(f"Hay filas que apuntan a registros inexistentes: {huerfanas[:3]}")
-ok(f"{len(esperadas)} tablas y claves foraneas integras")
+ok(f"{len(esperadas)} tablas (esquema v{version}) y claves foraneas integras")
 
 # ==================== 4. Catalogo y base vectorial coherentes ====================
 paso(4, "Comprobando que el catalogo y ChromaDB coincidan...")
@@ -119,15 +123,19 @@ else:
     ok(f"Respuesta con respaldo; primera cita: {r['citas'][0]['fuente']}, pag. 24, version {r['citas'][0]['version']}")
 
 # ==================== 9. Metricas ====================
-paso(9, "Probando el registro de metricas (sin dejar rastro)...")
-antes = len(metricas.listar())
-metricas.registrar("verificacion automatica", True, bd.CARRERA_POR_DEFECTO)
-despues = len(metricas.listar())
+paso(9, "Probando la analitica minimizada (sin dejar rastro)...")
+antes = metricas.contar()
+evento = metricas.registrar("¿cuantas horas de practicas necesito?", True, bd.CARRERA_POR_DEFECTO)
+despues = metricas.contar()
 with bd.transaccion() as c:
-    c.execute("DELETE FROM consultas WHERE pregunta = 'verificacion automatica'")
-if despues != antes + 1:
-    fallo(f"Las metricas no se registran (antes={antes}, despues={despues})")
-ok("Las consultas se registran correctamente")
+    fila = c.execute("SELECT categoria, con_respaldo FROM consulta_eventos WHERE id=?", (evento,)).fetchone()
+    columnas = {f[1] for f in c.execute("PRAGMA table_info(consulta_eventos)")}
+    c.execute("DELETE FROM consulta_eventos WHERE id=?", (evento,))
+if despues != antes + 1 or fila != ("horas", 1):
+    fallo(f"La consulta no se registro bien (antes={antes}, despues={despues}, evento={fila})")
+if columnas & {"pregunta", "usuario_id", "texto"}:
+    fallo(f"La analitica no debe guardar pregunta ni usuario: {columnas}")
+ok("Cada consulta deja solo su categoria (sin pregunta ni usuario)")
 
 # ==================== FIN ====================
 print("\n" + "=" * 60)

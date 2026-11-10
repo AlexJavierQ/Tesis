@@ -10,8 +10,12 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-from interfaces.api import app
+from pruebas import aislado
+
+aislado.preparar()   # carpeta de datos temporal: importar la API no toca datos/
+
+from fastapi.testclient import TestClient  # noqa: E402
+from interfaces.api import app  # noqa: E402
 
 
 ESTUDIANTE = {
