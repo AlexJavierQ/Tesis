@@ -1,0 +1,3 @@
+# Utilidades de pruebas locales; no necesarias para iniciar el servicio.
+-r requirements.txt
+httpx>=0.27,<1
