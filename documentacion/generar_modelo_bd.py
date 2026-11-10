@@ -23,7 +23,8 @@ COLORES = {
     "acceso": "#2f7d9a",
     "documentos": "#2f9e78",
     "chat": "#7a5bc4",
-    "analitica": "#6b7280",
+    "analitica": "#b4532a",
+    "legado": "#9ca3af",
     "bitacora": "#c8792b",
     "config": "#4b5563",
 }
@@ -59,9 +60,15 @@ TABLAS = {
         ("rol", "user | bot", ""), ("texto", "TEXT", ""),
         ("citas", "TEXT (JSON)", ""), ("creado_en", "DATETIME", "")]),
 
+    # cita normalizada: mensaje -> version exacta del documento
+    "citas_mensaje": (2, 15.0, "chat", [
+        ("id", "INTEGER", "PK"), ("mensaje_id", "INTEGER", "FK"),
+        ("documento_version_id", "", "FK"), ("pagina", "INTEGER", ""),
+        ("seccion", "TEXT", "")]),
+
     "usuario_carrera": (2, 2.2, "academico", [
         ("usuario_id", "INTEGER", "PK FK"), ("carrera_id", "INTEGER", "PK FK")]),
-    "consultas": (2, 5.2, "analitica", [
+    "consultas": (2, 5.2, "legado", [
         ("id", "INTEGER", "PK"), ("carrera_id", "INTEGER", "FK"),
         ("curso_id", "INTEGER", "FK?"), ("usuario_id", "INTEGER", "FK?"),
         ("modo", "general | curso | ambos", ""), ("pregunta", "TEXT", ""),
@@ -88,6 +95,12 @@ TABLAS = {
         ("numero", "INTEGER", ""), ("ruta", "TEXT UNIQUE", ""),
         ("fragmentos", "INTEGER", ""), ("subido_por", "INTEGER", "FK?"),
         ("subido_en", "DATETIME", ""), ("restaurada_de", "INTEGER", "")]),
+    # analitica minimizada: sin pregunta, sin usuario, fecha truncada al dia
+    "consulta_eventos": (4, 16.6, "analitica", [
+        ("id", "INTEGER", "PK"), ("carrera_id", "INTEGER", "FK"),
+        ("curso_id", "INTEGER", "FK?"), ("modo", "general | curso | ambos", ""),
+        ("categoria", "vocabulario cerrado", ""), ("con_respaldo", "INTEGER (0/1)", ""),
+        ("origen", "chat | migracion | sintetico", ""), ("dia", "DATE", "")]),
 }
 
 # (hija, campo FK, padre, ruta)
@@ -115,6 +128,13 @@ RELACIONES = [
     ("documentos", "carrera_id", "carreras", dict(sale="izq", llega="der", en=4.9)),
     ("documentos", "curso_id", "cursos", dict(sale="izq", llega="der", en=8.3)),
     ("documento_versiones", "documento_id", "documentos", dict(sale="arr", llega="aba")),
+    ("citas_mensaje", "mensaje_id", "mensajes", dict(sale="izq", llega="der", en=16.675)),
+    ("citas_mensaje", "documento_version_id", "documento_versiones",
+     dict(sale="der", llega="izq", en=15.2, carril=4 * PASO - 1.7)),
+    ("consulta_eventos", "carrera_id", "carreras",
+     dict(sale="izq", llega="der", en=5.5, carril=4 * PASO - 0.75)),
+    ("consulta_eventos", "curso_id", "cursos",
+     dict(sale="izq", llega="der", en=9.3, carril=4 * PASO - 1.2)),
 ]
 
 TINTA, TENUE, BORDE, LINEA = "#1f2937", "#6b7280", "#cbd2dc", "#475569"
@@ -210,14 +230,14 @@ def dibujar_relacion(ax, hija, campo, padre, r):
 
 def main():
     ancho_total = 4 * PASO + ANCHO
-    alto_total = 22.6
+    alto_total = 26.0
     fig = plt.figure(figsize=(ancho_total * 0.62, alto_total * 0.62), dpi=130)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(-0.6, ancho_total + 0.6)
     ax.set_ylim(alto_total - 0.6, -1.6)
     ax.axis("off")
 
-    ax.text(ancho_total / 2, -0.9, "Modelo de datos · Asistente de Prácticum  (SQLite, 15 tablas, 19 claves foráneas)",
+    ax.text(ancho_total / 2, -0.9, "Modelo de datos · Asistente de Prácticum  (SQLite v6, 17 tablas, 23 claves foráneas)",
             ha="center", va="center", fontsize=17, fontweight="bold", color=TINTA)
 
     for hija, campo, padre, r in RELACIONES:
@@ -226,17 +246,17 @@ def main():
         dibujar_tabla(ax, t)
 
     # leyenda
-    ly = 20.2
+    ly = 23.6
     grupos = [("academico", "estructura académica"), ("acceso", "usuarios y acceso"),
-              ("documentos", "documentos y versiones"), ("chat", "historial de chat"),
-              ("analitica", "consultas (analítica)"), ("bitacora", "bitácora"),
-              ("config", "configuración")]
+              ("documentos", "documentos y versiones"), ("chat", "chat y citas"),
+              ("analitica", "analítica minimizada"), ("legado", "legado v5 (sin uso)"),
+              ("bitacora", "bitácora"), ("config", "configuración")]
     x = 0
     for g, txt in grupos:
         ax.add_patch(FancyBboxPatch((x, ly - 0.22), 0.44, 0.44, boxstyle="round,pad=0,rounding_size=0.08",
                                     fc=COLORES[g], ec="none"))
         ax.text(x + 0.62, ly, txt, va="center", fontsize=10.5, color=TINTA)
-        x += ancho_total / 7
+        x += ancho_total / 8
     ax.plot([0, 1.4], [ly + 1.0, ly + 1.0], color=LINEA, lw=1.6)
     ax.text(1.6, ly + 1.0, "obligatoria (FK NOT NULL)", va="center", fontsize=10, color=TINTA)
     ax.plot([7.0, 8.4], [ly + 1.0, ly + 1.0], color=LINEA, lw=1.6, ls=(0, (5, 3)))

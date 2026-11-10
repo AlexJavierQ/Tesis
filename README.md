@@ -27,7 +27,7 @@ asistente la menciona cuando cita fechas o plazos.
           núcleo Python (nucleo/)
   rag · busqueda · memoria · ingest · pdfreader · llm · auth · bd · ...
         |                 |                    |
-  SQLite (15 tablas)   ChromaDB (vectores)   PDFs en datos/docs/
+  SQLite (17 tablas)   ChromaDB (vectores)   PDFs en datos/docs/
                           |
                 Groq (modelo openai/gpt-oss-20b)
 ```
@@ -43,7 +43,13 @@ Cómo responde una pregunta:
 4. **Secciones completas:** se indexan fragmentos cortos, pero el modelo lee la
    sección entera de donde salen, con su título y su vigencia.
 5. **Respuesta y citas:** solo con ese contexto. Las citas guardan documento y
-   versión, y se ordenan según cuánto respaldan lo que se respondió.
+   versión, y se ordenan según cuánto respaldan lo que se respondió. Cada cita
+   abre la página de **la versión exacta** que respaldó la respuesta.
+6. **Analítica minimizada:** de cada consulta solo se guarda su categoría, si
+   tuvo respaldo y el día; nunca la pregunta ni quién la hizo.
+
+**Alcance V1:** el chat exige sesión de estudiante y se limita a sus carreras.
+El widget sin login es un prototipo anterior y queda fuera de la V1.
 
 ## Puesta en marcha
 
@@ -74,16 +80,35 @@ de prueba con contraseña conocida. **No lo uses en un servidor real.**
 | Rol | Gestiona |
 |---|---|
 | Administrador | Facultades y carreras, todos los usuarios, configuración del sistema, registro de actividad |
-| Coordinación | En sus carreras: documentos generales, cursos, asignación de docentes, estudiantes y docentes, métricas |
-| Docente | Documentos y métricas de los cursos que tiene asignados |
-| Estudiante | Chat con historial |
+| Coordinación | En sus carreras: documentos generales, cursos, asignación de docentes, estudiantes y docentes, panel de análisis de consultas |
+| Docente | Documentos y análisis de consultas de los cursos que tiene asignados |
+| Estudiante | Chat con historial, solo en sus carreras |
+
+Los permisos se validan en la API (rol, carrera, curso y dueño de la
+conversación); la interfaz solo oculta lo que cada rol no usa.
 
 ## Verificar
 
 ```bash
-python verificar.py              # prueba de humo (9 pasos, sin cuentas de prueba)
-python -m pruebas.integridad     # permisos, versionado, trazabilidad y fallos
+pip install -r requirements-dev.txt
+python -m unittest pruebas.test_v1_consulta pruebas.test_v1_seguridad -v
+                                 # permisos, citas, analítica, integridad y migración
+                                 # (datos temporales; no usa el modelo de lenguaje)
+python verificar.py              # prueba de humo sobre el corpus oficial (9 pasos)
+python -m pruebas.integridad     # versionado, trazabilidad y fallos, con el índice real
 python revisar_pdf.py <archivo>  # revisa si un PDF es apto antes de subirlo
+```
+
+`verificar.py` y `pruebas.integridad` usan los datos reales y llaman al modelo
+de lenguaje (consumen cuota de Groq). Las pruebas `unittest` trabajan en una
+carpeta temporal y no llaman a ningún servicio externo.
+
+Para una demostración local con datos sintéticos (segunda carrera, segundo
+docente y consultas de ejemplo marcadas como sintéticas):
+
+```bash
+python -m pruebas.datos_demo            # los crea
+python -m pruebas.datos_demo --quitar   # los retira
 ```
 
 ## Estructura
@@ -92,12 +117,14 @@ python revisar_pdf.py <archivo>  # revisa si un PDF es apto antes de subirlo
 nucleo/          motor: rag, busqueda, memoria, ingest, pdfreader, llm, bd, auth, ...
 interfaces/      api.py (FastAPI), react/ (aplicación web), widget/ (chat embebible)
 datos/docs/      corpus oficial en PDF (sistema.db y chroma_db se generan)
-pruebas/         pruebas automáticas de integridad
+pruebas/         pruebas automáticas (permisos, citas, analítica, integridad) y datos de demostración
 evaluacion/      evaluación del sistema (historico/ = pruebas con el corpus de demo)
 documentacion/   diseño, base de datos, anti-alucinación, formato de documentos
 ```
 
-Documentación principal: [arquitectura](documentacion/DISENO_ARQUITECTURA.md),
+Documentación principal: [entrega V1 para revisión](documentacion/V1_ENTREGA_REVISION.md),
+[requisitos V1](documentacion/V1_REQUISITOS_BASE_REVISION.md),
+[arquitectura](documentacion/DISENO_ARQUITECTURA.md),
 [base de datos](documentacion/DISENO_BD.md),
 [formato de documentos](documentacion/FORMATO_DOCUMENTOS.md),
 [resumen técnico](documentacion/RESUMEN_PARA_REVISION.md).

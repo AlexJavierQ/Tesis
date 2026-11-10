@@ -15,7 +15,7 @@ flowchart LR
     end
 
     subgraph Datos["Almacenes"]
-        S[(SQLite · sistema.db<br/>15 tablas)]
+        S[(SQLite · sistema.db<br/>17 tablas)]
         Ch[(ChromaDB<br/>vectores)]
         F[/PDF en datos/docs/]
     end
@@ -36,8 +36,12 @@ flowchart LR
 - **El núcleo no conoce las interfaces.** Se puede sumar otra (bot, app móvil)
   sin tocar `nucleo/`.
 - **SQLite es la fuente de verdad** (estructura, usuarios, catálogo de
-  documentos y versiones, chat, consultas, bitácora, configuración). ChromaDB
-  solo guarda los vectores; ambos se enlazan por id de documento y versión.
+  documentos y versiones, chat y citas, analítica minimizada, bitácora,
+  configuración). ChromaDB solo guarda los vectores; ambos se enlazan por id
+  de documento y versión.
+- **Alcance V1:** el chat exige sesión de estudiante y se limita a sus
+  carreras. El widget sin login del diagrama es un prototipo anterior que queda
+  **fuera de la V1** (la API ya no responde consultas sin sesión).
 
 ## Componentes del núcleo (nivel C4-3)
 
@@ -54,7 +58,8 @@ flowchart LR
 | `bd.py` | Esquema relacional, migraciones y catálogo de documentos |
 | `auth.py` | Contraseñas (PBKDF2), sesiones con expiración, usuarios y primer administrador |
 | `historial.py` | Conversaciones y mensajes por usuario |
-| `metricas.py` | Registro de consultas y agrupación de temas por significado |
+| `metricas.py` | Analítica minimizada: un evento por consulta (categoría, respaldo, día) y agregados para el panel |
+| `categorias.py` | Vocabulario cerrado de categorías y clasificación de la pregunta por palabras clave |
 | `parametros.py` | Configuración editable por el administrador |
 | `config.py` | Carga de la API key desde `secretos.toml` o variables de entorno |
 

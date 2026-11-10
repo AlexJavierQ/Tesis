@@ -25,9 +25,10 @@ son decisiones deliberadas, no omisiones: cada exclusión tiene un motivo.
 - La ingesta indexa el PDF automáticamente al subirlo.
 
 ### 1.3 Métricas anónimas
-- Coordinación ve totales de consultas, preguntas más frecuentes y
-  preguntas sin respaldo documental (vacíos a cubrir).
-- **No** se identifica quién preguntó.
+- Coordinación ve totales de consultas, categorías más consultadas y
+  brechas documentales (categorías y ámbitos con consultas sin respaldo).
+- **No** se almacena la pregunta ni quién la hizo (esquema v6, tabla
+  `consulta_eventos`).
 
 ### 1.4 Autenticación por rol
 - Cuatro roles con permisos distintos: estudiante, docente, coordinación y
@@ -50,7 +51,7 @@ son decisiones deliberadas, no omisiones: cada exclusión tiene un motivo.
 | RNF1 · Precisión | ≥ 90% recall@8 en consultas del corpus | Chunk=500 + solape 80, MiniLM multilingüe, ChromaDB coseno |
 | RNF2 · Trazabilidad | Toda respuesta con respaldo cita fuente y página | Verificable en el visor integrado |
 | RNF3 · Latencia | Respuesta < 8 s en 95% de consultas | Recuperación ~17 ms + LLM ~1 s típico |
-| RNF4 · Privacidad | Métricas sin identificar al usuario | Tabla `consultas` sin columna de usuario |
+| RNF4 · Privacidad | Métricas sin identificar al usuario | Tabla `consulta_eventos`: solo categoría, respaldo y día; sin pregunta ni usuario |
 | RNF5 · Extensibilidad | Cambiar herramienta = reescribir un archivo | Arquitectura de adaptadores |
 | RNF6 · Autenticación | Login con contraseña hasheada y roles | Módulo `nucleo/auth.py` |
 

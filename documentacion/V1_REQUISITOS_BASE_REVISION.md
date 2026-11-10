@@ -2,6 +2,8 @@
 
 **Corte:** 10/11/2026. **Estado:** especificación candidata congelada para revisión del 11/11/2026; **no validada ni aprobada institucionalmente**. Origen: propuesta de TT, matriz de Google Sheets v0.7 y diagnóstico del prototipo. No se inventan entrevistas, actas ni métricas.
 
+> **Estado de implementación al 10/11/2026:** qué requisitos están implementados, parciales o pendientes, con su evidencia, está en [V1_ENTREGA_REVISION.md](V1_ENTREGA_REVISION.md) (sección 3). De las decisiones P0 listadas al final de este documento, dos ya tienen respuesta técnica en la rama: `/preguntar` exige sesión de estudiante y la analítica dejó de guardar la pregunta literal y el usuario (esquema v6). Siguen pendientes de decisión institucional.
+
 **Objetivo general literal (propuesta):** Desarrollar una plataforma web basada en Retrieval-Augmented Generation (RAG) que asista las consultas de los estudiantes de Prácticum sobre prácticas preprofesionales.
 
 **E2 literal:** Desarrollar el pipeline documental y el motor del agente con validación anti-alucinación.

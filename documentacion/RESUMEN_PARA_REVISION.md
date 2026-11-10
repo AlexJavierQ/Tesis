@@ -1,8 +1,15 @@
 # Asistente de Prácticum UTPL: resumen técnico para revisión externa
 
 > Documento pensado para que otra persona o IA revise el proyecto y dé su
-> perspectiva. Describe el estado **actual** del sistema (octubre 2026).
+> perspectiva. Describe el estado del sistema en **octubre de 2026**.
 > Al final hay preguntas concretas sobre las que me interesa una opinión.
+>
+> **Actualización del 10/11/2026 (V1):** el esquema pasó a la versión 6 (17
+> tablas), el chat exige sesión de estudiante, las citas abren la versión exacta
+> del documento y la analítica ya no guarda preguntas ni usuarios. Lo vigente
+> está en [V1_ENTREGA_REVISION.md](V1_ENTREGA_REVISION.md) y
+> [DISENO_BD.md](DISENO_BD.md); las secciones 5 y 8 de este documento se
+> corrigieron para reflejarlo.
 
 ## 0. Cambios desde la revisión anterior
 
@@ -63,7 +70,7 @@ deriva a la coordinación en vez de inventar.
    rag · memoria · ingest · llm · auth · historial · metricas · parametros · bd
         |                 |                     |
   SQLite (sistema.db)  ChromaDB (vectores)   PDFs en datos/docs/
-  15 tablas            fragmentos + embeddings
+  17 tablas            fragmentos + embeddings
                           |
                   Groq API (LLM: openai/gpt-oss-20b)
 ```
@@ -199,15 +206,15 @@ Con estas cifras alcanza para unas 105 preguntas al día con concatenación y un
 Cuando se agota la cuota, el sistema no se cae: la reescritura vuelve a la
 concatenación y la respuesta pasa a modo degradado (muestra los fragmentos).
 
-## 5. Modelo de datos (SQLite, 15 tablas, esquema v5)
+## 5. Modelo de datos (SQLite, 17 tablas, esquema v6)
 
 | Grupo | Tablas |
 |---|---|
 | Estructura académica | `facultades` → `carreras` → `cursos`; `curso_docente` (N:M, qué docentes dictan cada curso) |
 | Usuarios y acceso | `roles`, `usuarios` (con correo único y estado activo), `usuario_carrera` (N:M), `sesiones` (con expiración) |
 | Documentos | `documentos` (`curso_id` NULL = global, estado activo/inactivo), `documento_versiones` (historial; `restaurada_de`) |
-| Chat | `conversaciones` (con el resumen de la memoria), `mensajes` |
-| Analítica y auditoría | `consultas` (relacionada con carrera, curso y usuario; modo de respuesta), `logs` (bitácora) |
+| Chat | `conversaciones` (con el resumen de la memoria), `mensajes`, `citas_mensaje` (cada cita enlazada a la versión exacta del documento) |
+| Analítica y auditoría | `consulta_eventos` (categoría, respaldo y día; sin pregunta ni usuario), `consultas` (legado v5, sin uso), `logs` (bitácora) |
 | Configuración | `parametros` (valores editables desde la interfaz) |
 
 Reglas de robustez:
@@ -239,7 +246,7 @@ Los permisos se validan en la API, endpoint por endpoint. El frontend solo
 oculta lo que no corresponde.
 
 **Parámetros configurables (sin tocar código):** umbral de similitud, top-k,
-máximo de citas, modelo de IA, temperatura, umbral de agrupación de temas,
+máximo de citas, modelo de IA, temperatura,
 horas de sesión, tamaño máximo de PDF, mensajes fijos del bot, modo y ventana
 de memoria. Cada valor se valida por tipo y rango y cada cambio queda en la
 bitácora. La clave de API **no** es un parámetro: se queda fuera de la base de datos.
@@ -255,13 +262,13 @@ bitácora. La clave de API **no** es un parámetro: se queda fuera de la base de
 
 ## 8. Analítica para la coordinación
 
-- Total de consultas, porcentaje con respaldo documental, preguntas sin respaldo
-  (muestran qué falta en los documentos).
-- **Temas más consultados agrupados por significado:** las preguntas se
-  convierten en vectores y se agrupan por similitud coseno ≥ 0.70 (enlace
-  simple, voraz). Así "¿cuántas horas necesito?" y "¿cuál es el total de horas?"
-  cuentan como un solo tema.
-- Nunca se muestra quién preguntó qué.
+- Total de consultas y porcentaje con respaldo documental, por carrera o curso.
+- **Categorías más consultadas:** cada consulta se clasifica por palabras clave
+  en un vocabulario cerrado (horas, plazos, formatos, evaluación, requisitos,
+  trámites, otros). Sustituye al agrupamiento por significado de la versión
+  anterior, que obligaba a guardar y mostrar las preguntas literales.
+- **Brechas documentales:** categorías y ámbitos con consultas sin respaldo.
+- No se almacena la pregunta ni quién la hizo: el panel solo tiene agregados.
 
 ## 9. Lo verificado hasta ahora
 
