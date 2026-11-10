@@ -384,14 +384,10 @@ def borrar_usuario_api(usuario: str, authorization: str = Header(None)):
     return {"ok": True}
 
 
-# ==================== CONSULTA (publica: para el widget del portal) ====================
+# ==================== CONSULTA V1 (estudiante autenticado) ====================
 @app.post("/preguntar")
 def preguntar(c: Consulta, authorization: str = Header(None)):
-    """
-    Pregunta al asistente. Publica: el widget del portal puede llamar sin login.
-    Si viene una sesion valida y un conversacion_id propio, usa los mensajes
-    previos como memoria y guarda el intercambio en el historial del usuario.
-    """
+    """Responde con corpus autorizado; solo estudiantes con sesion valida en V1."""
     if not c.pregunta.strip():
         raise HTTPException(400, "La pregunta esta vacia.")
     if c.carrera not in rag.carreras():
@@ -401,11 +397,17 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
     if c.modo == "curso" and not c.curso:
         raise HTTPException(400, "Para responder desde un curso, elige el curso.")
 
-    # memoria conversacional: si hay sesion y conversacion propia, se arma el
-    # contexto (ventana reciente + resumen) para entender los seguimientos
-    usuario = _sesion(authorization)
-    es_suya = (usuario and c.conversacion_id
-               and historial.es_dueno(c.conversacion_id, usuario["usuario"]))
+    # V1: el chat es autenticado y se restringe a las carreras del estudiante.
+    # El widget sin sesion es una extension FUERA del alcance V1.
+    usuario = _exigir(authorization, "estudiante")
+    _exigir_carrera(usuario, c.carrera)
+
+    # Nunca tolerar de forma silenciosa un id de conversacion ajeno.
+    # El chat no debe responder ni escribir datos bajo un hilo de otro usuario.
+    if c.conversacion_id is not None and not historial.es_dueno(
+            c.conversacion_id, usuario["usuario"]):
+        raise HTTPException(403, "Esa conversacion no es tuya.")
+    es_suya = c.conversacion_id is not None
     contexto = memoria.preparar(c.conversacion_id) if es_suya else None
 
     r = rag.responder(c.pregunta, c.carrera, c.curso, contexto, c.modo)
