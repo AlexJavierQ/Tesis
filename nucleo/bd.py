@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 5.
+MODELO DE DATOS RELACIONAL (SQLite normalizado) - version 6.
 
 Es la FUENTE DE VERDAD del sistema. Todas las tablas viven en un solo archivo
 (datos/sistema.db) y se relacionan por claves foraneas (FK). Los vectores del
 RAG siguen en ChromaDB; los PDF siguen en carpetas (datos/docs/...).
 
-Tablas (15):
+Tablas (17):
   ESTRUCTURA ACADEMICA
     facultades(id, nombre)
     carreras(id, facultad_id -> facultades, nombre)
@@ -30,21 +30,36 @@ Tablas (15):
     conversaciones(id, usuario_id -> usuarios, titulo, iniciada_en,
                    resumen, resumen_hasta)   <- memoria conversacional
     mensajes(id, conversacion_id -> conversaciones, rol, texto, citas, creado_en)
+    citas_mensaje(id, mensaje_id -> mensajes, documento_version_id ->
+                  documento_versiones, pagina, seccion)
+                  <- cada cita apunta a la VERSION EXACTA del documento usado
   ANALITICA Y AUDITORIA
-    consultas(id, carrera_id, curso_id, usuario_id, modo, pregunta, respondida, creado_en)
+    consulta_eventos(id, carrera_id, curso_id, modo, categoria, con_respaldo,
+                     origen, dia)
+                  <- analitica MINIMIZADA: sin pregunta literal, sin usuario y
+                     con la fecha truncada al dia. Es lo unico que lee el panel.
+    consultas(...)  <- LEGADO (v5): pregunta literal + usuario. Ya no se escribe
+                     ni se lee; se conserva hasta definir su retencion.
     logs(id, usuario_id, accion, detalle, creado_en)
 
+Migraciones: aditivas y versionadas con PRAGMA user_version. Antes de migrar
+una base existente se guarda una copia en datos/respaldos/.
+
 """
+import json
 import os
 import sqlite3
+import time
 from contextlib import contextmanager
 
-BASE = os.path.dirname(__file__)
-DB = os.path.join(os.path.dirname(BASE), "datos", "sistema.db")
-DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
-CONSULTAS_VIEJA = os.path.join(os.path.dirname(BASE), "datos", "consultas.db")
+from nucleo import categorias, config
 
-VERSION_ESQUEMA = 5
+DB = os.path.join(config.DATOS, "sistema.db")
+DOCS = os.path.join(config.DATOS, "docs")
+RESPALDOS = os.path.join(config.DATOS, "respaldos")
+CONSULTAS_VIEJA = os.path.join(config.DATOS, "consultas.db")
+
+VERSION_ESQUEMA = 6
 ROLES = ("estudiante", "docente", "coordinacion", "administrador")
 FACULTAD_POR_DEFECTO = "Ingenierías y Arquitectura"
 CARRERA_POR_DEFECTO = "computacion"
@@ -188,9 +203,41 @@ def _crear_tablas(c):
         {_fecha("creado_en")}
     )""")
 
+    # cita NORMALIZADA: mensaje -> version exacta del PDF -> pagina. El JSON de
+    # mensajes.citas se conserva para los mensajes anteriores a la v6.
+    # RESTRICT: no se puede borrar una version que respalda una respuesta.
+    c.execute("""CREATE TABLE IF NOT EXISTS citas_mensaje (
+        id                    INTEGER PRIMARY KEY,
+        mensaje_id            INTEGER NOT NULL REFERENCES mensajes(id) ON DELETE CASCADE,
+        documento_version_id  INTEGER NOT NULL
+                              REFERENCES documento_versiones(id) ON DELETE RESTRICT,
+        pagina                INTEGER NOT NULL CHECK (pagina >= 1),
+        seccion               TEXT NOT NULL DEFAULT '',
+        UNIQUE (mensaje_id, documento_version_id, pagina, seccion)
+    )""")
+
     # --- analitica y auditoria ---
-    # consultas ya NO esta aislada: se relaciona con carrera, curso y usuario.
-    # usuario_id es NULL cuando pregunta alguien sin sesion (widget publico).
+    # consulta_eventos: lo UNICO que alimenta el panel de metricas. Datos
+    # minimizados: categoria de un vocabulario cerrado (nucleo/categorias.py),
+    # sin pregunta literal, sin usuario y con la fecha truncada al dia (para
+    # que no se pueda cruzar por hora exacta con los mensajes del chat).
+    # origen: 'chat' = consulta real; 'migracion' = derivada de la tabla
+    # consultas al pasar a v6; 'sintetico' = datos de demostracion.
+    lista = ", ".join(f"'{k}'" for k in categorias.CLAVES)
+    c.execute(f"""CREATE TABLE IF NOT EXISTS consulta_eventos (
+        id            INTEGER PRIMARY KEY,
+        carrera_id    INTEGER NOT NULL REFERENCES carreras(id) ON DELETE RESTRICT,
+        curso_id      INTEGER REFERENCES cursos(id) ON DELETE SET NULL,
+        modo          TEXT NOT NULL CHECK (modo IN ('general', 'curso', 'ambos')),
+        categoria     TEXT NOT NULL CHECK (categoria IN ({lista})),
+        con_respaldo  INTEGER NOT NULL CHECK (con_respaldo IN (0, 1)),
+        origen        TEXT NOT NULL DEFAULT 'chat'
+                      CHECK (origen IN ('chat', 'migracion', 'sintetico')),
+        dia           DATE NOT NULL DEFAULT (date('now','localtime'))
+                      CHECK (dia IS date(dia))
+    )""")
+    # LEGADO v5: guarda la pregunta literal ligada al usuario. Desde la v6 no
+    # se escribe ni se lee; no se borra hasta definir la politica de retencion.
     c.execute(f"""CREATE TABLE IF NOT EXISTS consultas (
         id          INTEGER PRIMARY KEY,
         carrera_id  INTEGER NOT NULL REFERENCES carreras(id) ON DELETE CASCADE,
@@ -233,8 +280,47 @@ def _crear_tablas(c):
         "CREATE INDEX IF NOT EXISTS ix_mensajes_conv ON mensajes(conversacion_id)",
         "CREATE INDEX IF NOT EXISTS ix_consultas_carrera ON consultas(carrera_id, curso_id)",
         "CREATE INDEX IF NOT EXISTS ix_logs_fecha ON logs(creado_en)",
+        "CREATE INDEX IF NOT EXISTS ix_citas_mensaje ON citas_mensaje(mensaje_id)",
+        "CREATE INDEX IF NOT EXISTS ix_citas_version ON citas_mensaje(documento_version_id)",
+        "CREATE INDEX IF NOT EXISTS ix_eventos_ambito ON consulta_eventos(carrera_id, curso_id, dia)",
     ):
         c.execute(sql)
+    _crear_disparadores(c)
+
+
+def _crear_disparadores(c):
+    """
+    Reglas de integridad que una FK sola no expresa (la BD las exige aunque el
+    codigo de la aplicacion falle):
+      - un documento o un evento de un curso debe ser de la carrera de ese curso;
+      - solo se asigna a un curso a un DOCENTE que pertenece a su carrera.
+    """
+    def curso_de_la_carrera(nombre, tabla, cuando):
+        c.execute(f"""CREATE TRIGGER IF NOT EXISTS {nombre}
+            BEFORE {cuando} ON {tabla}
+            WHEN NEW.curso_id IS NOT NULL
+            BEGIN
+              SELECT RAISE(ABORT, 'El curso no pertenece a la carrera indicada.')
+              WHERE NOT EXISTS (SELECT 1 FROM cursos
+                                WHERE id = NEW.curso_id AND carrera_id = NEW.carrera_id);
+            END""")
+
+    for tabla in ("documentos", "consulta_eventos"):
+        curso_de_la_carrera(f"trg_{tabla}_curso_carrera_ins", tabla, "INSERT")
+        curso_de_la_carrera(f"trg_{tabla}_curso_carrera_upd", tabla,
+                            "UPDATE OF carrera_id, curso_id")
+
+    c.execute("""CREATE TRIGGER IF NOT EXISTS trg_curso_docente_ins
+        BEFORE INSERT ON curso_docente
+        BEGIN
+          SELECT RAISE(ABORT, 'Solo se asigna un docente de la carrera del curso.')
+          WHERE NOT EXISTS (
+            SELECT 1 FROM usuarios u
+            JOIN roles r            ON r.id = u.rol_id
+            JOIN usuario_carrera uc ON uc.usuario_id = u.id
+            JOIN cursos cu          ON cu.carrera_id = uc.carrera_id
+            WHERE u.id = NEW.usuario_id AND r.nombre = 'docente' AND cu.id = NEW.curso_id);
+        END""")
 
 
 def _migrar_si_hace_falta(c):
@@ -245,6 +331,9 @@ def _migrar_si_hace_falta(c):
                aqui solo se agrega la columna nueva. No se pierde nada.
       v3 -> v4: columnas del resumen de la memoria conversacional.
       v4 -> v5: vigencia de cada documento.
+      v5 -> v6: citas_mensaje y consulta_eventos (tablas nuevas, las crea
+               _crear_tablas) y reglas de integridad. Los datos existentes se
+               copian a las tablas nuevas en _rellenar_v6; no se borra nada.
     """
     version = c.execute("PRAGMA user_version").fetchone()[0]
     tablas = [f[0] for f in c.execute(
@@ -266,6 +355,69 @@ def _migrar_si_hace_falta(c):
     if version in (2, 3, 4):
         print("[bd] Migrando sistema.db a v5 (vigencia de documentos).")
         c.execute("ALTER TABLE documentos ADD COLUMN vigencia TEXT")
+
+
+def _respaldar(version):
+    """
+    Copia consistente de sistema.db ANTES de migrarla (API de backup de SQLite,
+    no una copia del archivo a medias). Devuelve la ruta del respaldo.
+    """
+    os.makedirs(RESPALDOS, exist_ok=True)
+    destino = os.path.join(RESPALDOS, f"sistema_v{version}_{time.strftime('%Y%m%d_%H%M%S')}.db")
+    origen, copia = sqlite3.connect(DB), sqlite3.connect(destino)
+    try:
+        origen.backup(copia)
+    finally:
+        copia.close()
+        origen.close()
+    print(f"[bd] Respaldo previo a la migracion: {destino}")
+    return destino
+
+
+def _version_en_disco():
+    """(user_version, hay tablas) de la base que ya existe, o (0, False)."""
+    if not os.path.exists(DB):
+        return 0, False
+    c = sqlite3.connect(DB)
+    try:
+        version = c.execute("PRAGMA user_version").fetchone()[0]
+        hay = c.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0] > 0
+    finally:
+        c.close()
+    return version, hay
+
+
+def _rellenar_v6(c):
+    """
+    Paso de datos de v5 a v6. Solo AGREGA filas a las tablas nuevas:
+      - citas_mensaje: de cada cita guardada en el JSON de mensajes.citas, si
+        su documento y version siguen existiendo.
+      - consulta_eventos: una fila por cada consulta antigua, ya sin pregunta
+        ni usuario (solo su categoria) y marcada con origen 'migracion'.
+    La tabla consultas queda intacta. Es repetible: no duplica filas.
+    """
+    for mid, crudo in c.execute(
+            "SELECT id, citas FROM mensajes WHERE citas IS NOT NULL").fetchall():
+        try:
+            citas = json.loads(crudo) or []
+        except ValueError:
+            continue
+        for ci in citas:
+            vid = _id(c, "SELECT id FROM documento_versiones WHERE documento_id=? AND numero=?",
+                      (ci.get("documento_id"), ci.get("version")))
+            if vid and isinstance(ci.get("pagina"), int) and ci["pagina"] >= 1:
+                c.execute("""INSERT OR IGNORE INTO citas_mensaje
+                             (mensaje_id, documento_version_id, pagina, seccion)
+                             VALUES (?,?,?,?)""", (mid, vid, ci["pagina"], ci.get("seccion") or ""))
+
+    if _id(c, "SELECT 1 FROM consulta_eventos WHERE origen='migracion' LIMIT 1", ()):
+        return
+    for caid, cuid, modo, pregunta, respondida, creado in c.execute(
+            "SELECT carrera_id, curso_id, modo, pregunta, respondida, creado_en FROM consultas").fetchall():
+        c.execute("""INSERT INTO consulta_eventos
+                     (carrera_id, curso_id, modo, categoria, con_respaldo, origen, dia)
+                     VALUES (?,?,?,?,?,'migracion',date(?))""",
+                  (caid, cuid, modo, categorias.clasificar(pregunta), respondida, creado))
 
 
 def _seed(c):
@@ -329,12 +481,18 @@ def _importar_consultas_viejas(c):
 
 
 def inicializar():
+    en_disco, hay_tablas = _version_en_disco()
+    if hay_tablas and 2 <= en_disco < VERSION_ESQUEMA:
+        _respaldar(en_disco)           # nunca se migra sin copia previa
     with transaccion() as c:
         version_previa = c.execute("PRAGMA user_version").fetchone()[0]
         _migrar_si_hace_falta(c)
         _crear_tablas(c)
         _seed(c)
         _importar_consultas_viejas(c)
+        if 2 <= version_previa < 6:
+            print("[bd] Migrando sistema.db a v6 (citas por version y analitica minimizada).")
+            _rellenar_v6(c)
         if version_previa == 2:
             # en v2 un docente gestionaba todos los cursos de su carrera; al
             # migrar se le asignan esos cursos para que no pierda el acceso
@@ -582,6 +740,34 @@ def registrar_version(carrera, curso, nombre, ruta, fragmentos, usuario=None,
                      VALUES (?,?,?,?,?,?)""",
                   (doc_id, numero, ruta, fragmentos, uid, restaurada_de))
     return doc_id, numero
+
+
+def version_de(doc_id, numero):
+    """
+    Una version concreta de un documento (vigente o anterior) con su ambito:
+    {id, documento_id, numero, ruta, nombre, carrera, curso}, o None.
+    Con esto una cita abre SIEMPRE el archivo de la version que se uso.
+    """
+    with transaccion() as c:
+        f = c.execute("""
+            SELECT v.id, d.id, v.numero, v.ruta, d.nombre, ca.nombre, cu.nombre
+            FROM documento_versiones v
+            JOIN documentos d   ON v.documento_id = d.id
+            JOIN carreras ca    ON d.carrera_id = ca.id
+            LEFT JOIN cursos cu ON d.curso_id = cu.id
+            WHERE d.id=? AND v.numero=?""", (doc_id, numero)).fetchone()
+    if not f:
+        return None
+    return {"id": f[0], "documento_id": f[1], "numero": f[2], "ruta": f[3],
+            "nombre": f[4], "carrera": f[5], "curso": f[6]}
+
+
+def respuestas_que_citan(doc_id):
+    """Cuantas respuestas del chat citan alguna version de este documento."""
+    with transaccion() as c:
+        return _id(c, """SELECT COUNT(DISTINCT cm.mensaje_id) FROM citas_mensaje cm
+                         JOIN documento_versiones v ON cm.documento_version_id = v.id
+                         WHERE v.documento_id=?""", (doc_id,)) or 0
 
 
 def quitar_version(doc_id, numero):

@@ -17,8 +17,7 @@ import re
 import unicodedata
 from nucleo import llm, bd, parametros, busqueda, memoria as memoria_conv
 
-BASE = os.path.dirname(__file__)
-DOCS = os.path.join(os.path.dirname(BASE), "datos", "docs")
+DOCS = bd.DOCS
 
 # Los ajustes (top_k, umbral_similitud, max_citas, mensajes fijos) ya no son
 # constantes: se leen de la tabla `parametros` cada vez que se usan, asi el
@@ -336,8 +335,9 @@ def responder(pregunta, carrera, curso=None, memoria=None, modo=None):
     # capa social: saludos, gracias, "ayuda" -> respondemos sin buscar
     social = _mensaje_social(pregunta)
     if social is not None:
+        # social=True: no es una consulta sobre el Practicum (no cuenta en la analitica)
         return {"respuesta": social, "citas": [], "con_respaldo": True, "modo": modo,
-                "pregunta_interpretada": pregunta}
+                "pregunta_interpretada": pregunta, "social": True}
 
     # memoria conversacional: pregunta autonoma para buscar y para el prompt
     q = interpretar(pregunta, memoria)

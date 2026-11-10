@@ -30,14 +30,29 @@ def crear_conversacion(usuario, titulo=""):
 
 def agregar_mensaje(conversacion_id, rol, texto, citas=None):
     """
-    Guarda un mensaje en una conversacion.
-    rol: 'user' o 'bot'. citas: lista (se guarda como JSON) o None.
+    Guarda un mensaje en una conversacion y devuelve su id.
+    rol: 'user' o 'bot'. citas: lista de {fuente, pagina, seccion,
+    documento_id, version} o None.
+
+    Cada cita se guarda en citas_mensaje enlazada a la VERSION EXACTA del
+    documento (clave foranea). El JSON de mensajes.citas se sigue escribiendo
+    como copia de compatibilidad con la v5.
     """
     with bd.transaccion() as c:
-        c.execute(
+        mid = c.execute(
             "INSERT INTO mensajes (conversacion_id, rol, texto, citas) VALUES (?,?,?,?)",
             (conversacion_id, rol, texto, json.dumps(citas) if citas else None),
-        )
+        ).lastrowid
+        for ci in citas or []:
+            fila = c.execute(
+                "SELECT id FROM documento_versiones WHERE documento_id=? AND numero=?",
+                (ci.get("documento_id"), ci.get("version"))).fetchone()
+            if fila:
+                c.execute("""INSERT OR IGNORE INTO citas_mensaje
+                             (mensaje_id, documento_version_id, pagina, seccion)
+                             VALUES (?,?,?,?)""",
+                          (mid, fila[0], ci["pagina"], ci.get("seccion") or ""))
+    return mid
 
 
 def es_dueno(conversacion_id, usuario):
@@ -71,8 +86,15 @@ def conversaciones_de(usuario):
             for f in filas]
 
 
+_CAMPOS_CITA = ("fuente", "pagina", "seccion", "documento_id", "version")
+
+
 def mensajes_de(conversacion_id):
-    """Lista los mensajes de una conversacion, en orden cronologico."""
+    """
+    Lista los mensajes de una conversacion, en orden cronologico.
+    Las citas salen de citas_mensaje (la version exacta, por clave foranea).
+    Solo si un mensaje antiguo no tiene filas ahi se usa su JSON de la v5.
+    """
     with bd.transaccion() as c:
         filas = c.execute("""
             SELECT id, rol, texto, citas, creado_en
@@ -80,13 +102,26 @@ def mensajes_de(conversacion_id):
             WHERE conversacion_id = ?
             ORDER BY id ASC
         """, (conversacion_id,)).fetchall()
+        normalizadas = {}
+        for mid, fuente, pagina, seccion, doc_id, version in c.execute("""
+                SELECT cm.mensaje_id, d.nombre, cm.pagina, cm.seccion, d.id, v.numero
+                FROM citas_mensaje cm
+                JOIN mensajes m             ON m.id = cm.mensaje_id
+                JOIN documento_versiones v  ON v.id = cm.documento_version_id
+                JOIN documentos d           ON d.id = v.documento_id
+                WHERE m.conversacion_id = ?
+                ORDER BY cm.id""", (conversacion_id,)):
+            normalizadas.setdefault(mid, []).append({
+                "fuente": fuente, "pagina": pagina, "seccion": seccion,
+                "documento_id": doc_id, "version": version})
     salida = []
     for mid, rol, texto, citas, ts in filas:
+        legado = [{k: ci.get(k) for k in _CAMPOS_CITA} for ci in (json.loads(citas) if citas else [])]
         salida.append({
             "id": mid,
             "rol": rol,
             "texto": texto,
-            "citas": json.loads(citas) if citas else [],
+            "citas": normalizadas.get(mid) or legado,
             "ts": ts,
         })
     return salida

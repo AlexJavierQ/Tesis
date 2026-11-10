@@ -10,6 +10,12 @@ El archivo de secretos NUNCA se sube al repositorio (esta en .gitignore).
 import os
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Carpeta de datos (sistema.db, chroma_db/, docs/). Por defecto <raiz>/datos.
+# La variable PRACTICUM_DATOS la cambia: las pruebas automaticas y los ensayos
+# de migracion trabajan sobre una copia aislada sin tocar los datos reales.
+DATOS = os.path.abspath(os.environ.get("PRACTICUM_DATOS") or os.path.join(BASE, "datos"))
+
 ARCHIVOS = [
     os.path.join(BASE, "secretos.toml"),
     os.path.join(BASE, ".streamlit", "secrets.toml"),   # ubicacion antigua

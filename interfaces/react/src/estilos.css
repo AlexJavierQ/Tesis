@@ -536,6 +536,10 @@ input[type="checkbox"] {
 .tema-meta { font-size: 13px; color: var(--texto-3); margin-top: 2px; }
 .barra-progreso { height: 6px; background: var(--superficie-2); border-radius: 999px; margin-top: 8px; overflow: hidden; }
 .barra-progreso span { display: block; height: 100%; background: var(--primario); border-radius: 999px; }
+.barra-progreso.aviso span { background: var(--aviso); }
+.tema-n.atencion, .tabla td.atencion { color: var(--aviso); font-weight: 700; }
+.nota-bloque { margin: 0 0 20px; }
+.tarjeta-ambitos { margin-top: 24px; }
 
 /* CONFIGURACION */
 .parametro { padding: 24px 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; }

@@ -55,13 +55,16 @@ export default function Chat({ carrera }) {
     setFuenteAbierta(null);
   }
 
+  // una cita se puede abrir si trae el documento y la version que la respaldan
+  const abrible = (cita) => Boolean(cita.documento_id && cita.version);
+
   async function abrirFuente(cita) {
-    if (!cita.ref) return;
+    if (!abrible(cita)) return;
     cerrarFuente();
     const solicitud = ++solicitudFuente.current;
     setFuenteAbierta({ cita, cargando: true, url: null, error: null });
     try {
-      const blob = await api.paginaDocumento(cita.ref, cita.pagina);
+      const blob = await api.paginaDocumento(cita.documento_id, cita.version, cita.pagina);
       const url = URL.createObjectURL(blob);
       if (solicitudFuente.current !== solicitud) {
         URL.revokeObjectURL(url);
@@ -236,7 +239,7 @@ export default function Chat({ carrera }) {
                           {m.citas.map((c, j) => (
                             <button key={j} type="button" className="cita cita-boton"
                                     title={c.seccion || "Abrir fuente documental"}
-                                    onClick={() => abrirFuente(c)} disabled={!c.ref}>
+                                    onClick={() => abrirFuente(c)} disabled={!abrible(c)}>
                               <FileText size={14} />{c.fuente}, pág. {c.pagina}
                               {c.version && <small>versión {c.version}</small>}
                             </button>

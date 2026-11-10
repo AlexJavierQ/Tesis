@@ -181,6 +181,11 @@ def actualizar_usuario(usuario, rol=None, carreras=None, nuevo_password=None,
                 c.execute("DELETE FROM usuario_carrera WHERE usuario_id=?", (uid,))
                 c.executemany("INSERT INTO usuario_carrera (usuario_id, carrera_id) VALUES (?,?)",
                               [(uid, cid) for cid in ids])
+                # un docente no conserva cursos de una carrera a la que ya no pertenece
+                c.execute("""DELETE FROM curso_docente WHERE usuario_id=? AND curso_id NOT IN (
+                                 SELECT cu.id FROM cursos cu
+                                 JOIN usuario_carrera uc ON uc.carrera_id = cu.carrera_id
+                                 WHERE uc.usuario_id=?)""", (uid, uid))
             if nombre:
                 c.execute("UPDATE usuarios SET nombre=? WHERE id=?", (nombre.strip(), uid))
             if correo:

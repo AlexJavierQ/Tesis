@@ -14,10 +14,9 @@ mas cercanos en significado.
 import os
 import chromadb
 from chromadb.utils import embedding_functions
-from nucleo import embeddings
+from nucleo import config, embeddings
 
-BASE = os.path.dirname(__file__)
-CARPETA = os.path.join(os.path.dirname(BASE), "datos", "chroma_db")
+CARPETA = os.path.join(config.DATOS, "chroma_db")
 COLECCION = "practicum"
 
 

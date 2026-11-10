@@ -13,6 +13,15 @@ export function fecha(texto) {
   return isNaN(d) ? texto : FORMATO_FECHA.format(d);
 }
 
+const FORMATO_DIA = new Intl.DateTimeFormat("es-EC", { day: "numeric", month: "short", year: "numeric" });
+
+/** "2026-10-19" (fecha sin hora) -> "19 oct 2026" */
+export function dia(texto) {
+  if (!texto) return "";
+  const d = new Date(texto + "T00:00:00");
+  return isNaN(d) ? texto : FORMATO_DIA.format(d);
+}
+
 /** "computacion" -> "Computacion" (nombres guardados en minusculas) */
 export function nombre(texto) {
   return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : "";

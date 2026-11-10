@@ -10,23 +10,23 @@ import {
 const CHAT = { clave: "chat", texto: "Chat", icono: MessageSquare };
 const DOCUMENTOS = { clave: "documentos", texto: "Documentos", icono: FileText };
 const CURSOS = { clave: "cursos", texto: "Cursos y docentes", icono: BookOpen };
-const METRICAS = { clave: "metricas", texto: "Métricas", icono: ChartColumn };
+const METRICAS = { clave: "metricas", texto: "Análisis de consultas", icono: ChartColumn };
 const USUARIOS = { clave: "usuarios", texto: "Usuarios", icono: Users };
 const INSTITUCION = { clave: "institucion", texto: "Facultades y carreras", icono: Landmark };
 const CONFIGURACION = { clave: "configuracion", texto: "Configuración", icono: SlidersHorizontal };
 const REGISTRO = { clave: "registro", texto: "Registro de actividad", icono: History };
 
+// En la V1 el chat es solo del estudiante (la API rechaza /preguntar a los
+// demas roles), asi que docente y coordinacion no lo tienen en su menu.
 export const MENU = {
   estudiante: [
     { titulo: "Asistente", secciones: [CHAT] },
   ],
   docente: [
-    { titulo: "Asistente", secciones: [CHAT] },
     { titulo: "Mis cursos", secciones: [DOCUMENTOS, METRICAS] },
   ],
   coordinacion: [
-    { titulo: "Asistente", secciones: [CHAT] },
-    { titulo: "Mis carreras", secciones: [DOCUMENTOS, CURSOS, METRICAS] },
+    { titulo: "Mis carreras", secciones: [METRICAS, DOCUMENTOS, CURSOS] },
     { titulo: "Personas", secciones: [USUARIOS] },
   ],
   administrador: [

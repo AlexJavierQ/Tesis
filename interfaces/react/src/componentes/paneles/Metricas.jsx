@@ -1,49 +1,52 @@
 import { useEffect, useState } from "react";
-import { TriangleAlert, RotateCcw, ChartColumn, CircleCheck } from "lucide-react";
+import { RotateCcw, ChartColumn, CircleCheck, ShieldCheck, FlaskConical } from "lucide-react";
 import { api } from "../../api";
-import { nombre } from "../../formato";
+import { dia, nombre, plural } from "../../formato";
 import { cursosGestionables } from "./cursosGestionables";
 import { Encabezado, Tarjeta, Vacio } from "../ui";
 
 /**
- * Metricas agregadas (nunca muestran quien pregunto).
- * Coordinacion: toda la carrera activa. Docente: uno de sus cursos asignados.
+ * Analisis de consultas con datos minimizados.
+ * El servidor solo guarda la CATEGORIA de cada consulta (vocabulario cerrado):
+ * aqui no hay preguntas literales ni usuarios, solo agregados.
+ *  - Coordinacion: toda la carrera activa, o uno de sus cursos.
+ *  - Docente: uno de sus cursos asignados.
  */
 export default function Metricas({ usuario, carrera, fallar }) {
   const esCoord = usuario.rol === "coordinacion";
   const [cursos, setCursos] = useState([]);
-  const [curso, setCurso] = useState("");
+  const [curso, setCurso] = useState("");       // "" = toda la carrera (solo coordinacion)
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(false);
 
   useEffect(() => {
-    if (esCoord) { cargar(null); return; }
     cursosGestionables(usuario, carrera).then((cs) => {
       setCursos(cs);
-      setCurso(cs[0] || "");
-      if (cs[0]) cargar(cs[0]);
+      const inicial = esCoord ? "" : cs[0] || "";
+      setCurso(inicial);
+      if (esCoord || inicial) cargar(inicial);
     }).catch((e) => fallar(e.message));
   }, [carrera]);
 
   async function cargar(c) {
     setCargando(true);
-    try { setDatos(await api.metricas(carrera, esCoord ? null : c)); }
-    catch (e) { fallar(e.message); }
+    try { setDatos(await api.metricas(carrera, c || null)); }
+    catch (e) { setDatos(null); fallar(e.message); }
     finally { setCargando(false); }
   }
 
-  const maximo = datos?.top[0]?.n || 1;
-  const sinRespuesta = datos?.sin_respaldo.length || 0;
+  const maximo = datos?.categorias[0]?.total || 1;
 
   return (
     <>
-      <Encabezado titulo="Métricas"
+      <Encabezado titulo="Análisis de consultas"
                   descripcion={esCoord
-                    ? `Qué preguntan los estudiantes de ${nombre(carrera)} y qué falta en los documentos.`
-                    : "Qué preguntan los estudiantes en tus cursos."}>
-        {!esCoord && cursos.length > 0 && (
-          <select value={curso} style={{ width: 200 }} aria-label="Curso"
+                    ? `Qué temas consultan los estudiantes de ${nombre(carrera)} y dónde falta respaldo documental.`
+                    : "Qué temas consultan los estudiantes en tus cursos."}>
+        {(esCoord || cursos.length > 0) && (
+          <select value={curso} style={{ width: 220 }} aria-label="Ámbito"
                   onChange={(e) => { setCurso(e.target.value); cargar(e.target.value); }}>
+            {esCoord && <option value="">Toda la carrera</option>}
             {cursos.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
@@ -53,26 +56,35 @@ export default function Metricas({ usuario, carrera, fallar }) {
         </button>
       </Encabezado>
 
+      <p className="nota nota-bloque">
+        <ShieldCheck size={17} />
+        <span>Datos minimizados: de cada consulta solo se guarda su categoría, si tuvo respaldo
+          y el día. No se almacenan las preguntas ni quién las hizo.</span>
+      </p>
+
       {!esCoord && cursos.length === 0 && (
         <Tarjeta><Vacio icono={ChartColumn} titulo="No tienes cursos asignados">
-          Cuando la coordinación te asigne un curso, aquí verás qué preguntan sus estudiantes.
-        </Vacio></Tarjeta>
-      )}
-
-      {!datos && cargando && (
-        <Tarjeta><Vacio icono={ChartColumn} titulo="Calculando métricas…">
-          Agrupando las consultas por significado. Puede tardar unos segundos.
+          Cuando la coordinación te asigne un curso, aquí verás qué temas consultan sus estudiantes.
         </Vacio></Tarjeta>
       )}
 
       {datos && datos.total === 0 && (
         <Tarjeta><Vacio icono={ChartColumn} titulo="Aún no hay consultas registradas">
-          Cuando los estudiantes usen el chat, aquí verás sus temas más frecuentes.
+          Cuando los estudiantes usen el chat, aquí verás las categorías más consultadas.
         </Vacio></Tarjeta>
       )}
 
       {datos && datos.total > 0 && (
         <>
+          {datos.sinteticas > 0 && (
+            <p className="nota aviso nota-bloque">
+              <FlaskConical size={17} />
+              <span>{plural(datos.sinteticas, "consulta")} de este ámbito
+                {datos.sinteticas === 1 ? " es un dato sintético" : " son datos sintéticos"} de
+                demostración, no consultas reales de estudiantes.</span>
+            </p>
+          )}
+
           <dl className="resumen">
             <div>
               <dt>Consultas</dt>
@@ -83,44 +95,69 @@ export default function Metricas({ usuario, carrera, fallar }) {
               <dd className={datos.pct_respaldo >= 80 ? "bien" : "atencion"}>{datos.pct_respaldo} %</dd>
             </div>
             <div>
-              <dt>Sin respuesta en los documentos</dt>
-              <dd className={sinRespuesta ? "atencion" : "bien"}>
-                {sinRespuesta}<small>{sinRespuesta === 1 ? "pregunta" : "preguntas"}</small>
+              <dt>Sin respaldo documental</dt>
+              <dd className={datos.sin_respaldo ? "atencion" : "bien"}>
+                {datos.sin_respaldo}<small>{datos.sin_respaldo === 1 ? "consulta" : "consultas"}</small>
               </dd>
             </div>
           </dl>
 
           <div className="dos-columnas">
-            <Tarjeta titulo="Temas más consultados"
-                     descripcion="Las preguntas que significan lo mismo, aunque estén escritas distinto, cuentan como un solo tema.">
-              {datos.top.map((t, i) => (
-                <div key={i} className="tema">
+            <Tarjeta titulo="Categorías más consultadas"
+                     descripcion={`Del ${dia(datos.desde)} al ${dia(datos.hasta)}. Cada consulta cuenta en una sola categoría.`}>
+              {datos.categorias.map((c) => (
+                <div key={c.clave} className="tema">
                   <div className="tema-cabecera">
-                    <span className="tema-texto">{t.pregunta}</span>
-                    <span className="tema-n">{t.n}</span>
+                    <span className="tema-texto">{c.etiqueta}</span>
+                    <span className="tema-n">{c.total}</span>
                   </div>
-                  {t.variantes > 1 && <div className="tema-meta">Preguntado de {t.variantes} formas distintas</div>}
                   <div className="barra-progreso" aria-hidden="true">
-                    <span style={{ width: `${(100 * t.n) / maximo}%` }} />
+                    <span style={{ width: `${(100 * c.total) / maximo}%` }} />
                   </div>
                 </div>
               ))}
             </Tarjeta>
 
-            <Tarjeta titulo="Vacíos de información"
-                     descripcion="Lo que el asistente no pudo responder con los documentos. Indica qué información conviene agregar.">
-              {sinRespuesta === 0
-                ? <Vacio icono={CircleCheck} titulo="Sin vacíos por ahora">Todas las consultas tuvieron respaldo.</Vacio>
-                : <ul className="filas">
-                    {datos.sin_respaldo.map((p, i) => (
-                      <li key={i} className="fila">
-                        <TriangleAlert size={17} style={{ color: "var(--aviso)", flexShrink: 0 }} />
-                        <span className="fila-cuerpo">{p}</span>
-                      </li>
-                    ))}
-                  </ul>}
+            <Tarjeta titulo="Brechas documentales"
+                     descripcion="Categorías con consultas que el asistente no pudo responder con los documentos. Indican qué información conviene incorporar.">
+              {datos.brechas.length === 0
+                ? <Vacio icono={CircleCheck} titulo="Sin brechas por ahora">Todas las consultas tuvieron respaldo.</Vacio>
+                : datos.brechas.map((b) => (
+                    <div key={b.clave} className="tema">
+                      <div className="tema-cabecera">
+                        <span className="tema-texto">{b.etiqueta}</span>
+                        <span className="tema-n atencion">{b.sin_respaldo} de {b.total}</span>
+                      </div>
+                      <div className="tema-meta">{b.pct_sin_respaldo} % de sus consultas quedó sin respaldo</div>
+                      <div className="barra-progreso aviso" aria-hidden="true">
+                        <span style={{ width: `${b.pct_sin_respaldo}%` }} />
+                      </div>
+                    </div>
+                  ))}
             </Tarjeta>
           </div>
+
+          {datos.ambitos.length > 0 && (
+            <Tarjeta titulo="Consultas por ámbito" className="tarjeta-ambitos"
+                     descripcion="Normativa general de la carrera y cada uno de sus cursos.">
+              <div className="tabla-envoltura">
+                <table className="tabla">
+                  <thead>
+                    <tr><th scope="col">Ámbito</th><th scope="col">Consultas</th><th scope="col">Sin respaldo</th></tr>
+                  </thead>
+                  <tbody>
+                    {datos.ambitos.map((a) => (
+                      <tr key={a.curso || "general"}>
+                        <td>{a.curso || "Normativa general"}</td>
+                        <td>{a.total}</td>
+                        <td className={a.sin_respaldo ? "atencion" : ""}>{a.sin_respaldo}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Tarjeta>
+          )}
         </>
       )}
     </>

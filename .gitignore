@@ -11,6 +11,8 @@ datos/docs/**/_subida_*
 datos/sistema.db
 datos/consultas.db.migrada
 datos/chroma_db/
+# respaldos locales (manuales y los automaticos previos a una migracion)
+datos/respaldos/
 
 # python
 __pycache__/

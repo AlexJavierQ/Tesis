@@ -33,8 +33,6 @@ DEFECTOS = {
         "proveedor retira el actual."),
     "temperatura": ("0.2", "decimal", 0.0, 1.0,
         "Creatividad del modelo. Más bajo = respuestas más fieles a los documentos."),
-    "umbral_tema": ("0.70", "decimal", 0.40, 0.95,
-        "Similitud mínima para agrupar dos preguntas como el mismo tema en las métricas."),
     "horas_sesion": ("8", "entero", 1, 72,
         "Horas que dura una sesión antes de pedir que se inicie sesión de nuevo."),
     "max_pdf_mb": ("25", "entero", 1, 100,
@@ -91,9 +89,6 @@ AREAS = [
      "Límites de uso de la plataforma.",
      [("horas_sesion", "Duración de la sesión (horas)"),
       ("max_pdf_mb", "Tamaño máximo de PDF (MB)")]),
-    ("metricas", "Métricas",
-     "Cómo se agrupan las consultas en el panel de métricas.",
-     [("umbral_tema", "Similitud para agrupar temas")]),
 ]
 
 

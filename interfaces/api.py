@@ -16,7 +16,11 @@ ROLES Y PERMISOS
                    metricas de la carrera.
   docente       -> solo los cursos que tiene asignados: sube, versiona,
                    activa/desactiva documentos y ve sus metricas.
-  estudiante    -> usa el chat.
+  estudiante    -> usa el chat (solo en sus carreras) y su propio historial.
+
+Toda ruta exige sesion (token en el header Authorization, nunca en la URL),
+salvo /login y /salud. El ambito (carrera, curso) se valida SIEMPRE aqui, en
+el servidor: la interfaz solo oculta lo que cada rol no usa.
 
 Se corre con:  uvicorn interfaces.api:app --reload
 Docs interactivas:  http://localhost:8000/docs
@@ -38,7 +42,7 @@ from pydantic import BaseModel, Field
 from nucleo import (rag, ingest, vectorstore, pdfreader, metricas, auth, bd,
                     historial, parametros, memoria)
 
-app = FastAPI(title="API Asistente de Practicum", version="5.0")
+app = FastAPI(title="API Asistente de Practicum", version="6.0")
 
 # CORS: origenes permitidos. En desarrollo el front corre en otro puerto.
 ORIGENES = [o for o in os.environ.get("CORS_ORIGINS", "").split(",") if o] or [
@@ -155,22 +159,21 @@ def _nombre_valido(nombre):
     return nombre
 
 
-def _resolver_ruta(ref):
+def _exigir_lectura_doc(usuario, d):
     """
-    Convierte una ref relativa (viene del cliente) en una ruta absoluta,
-    verificando que caiga DENTRO de datos/docs/. Sin esto, un '../../..'
-    en la ref serviria cualquier archivo del disco.
+    Quien puede LEER un documento (abrir la pagina que respalda una cita):
+      estudiante y coordinacion -> los documentos de sus carreras
+      docente                   -> los de los cursos que tiene asignados
+      administrador             -> ninguno (no pertenece a carreras)
     """
-    destino = os.path.abspath(os.path.join(rag.DOCS, ref))
-    raiz = os.path.abspath(rag.DOCS)
-    if os.path.commonpath([destino, raiz]) != raiz:
-        raise HTTPException(400, "Ruta no permitida.")
-    if not os.path.exists(destino):
-        raise HTTPException(404, "Documento no encontrado.")
-    return destino
+    if d["carrera"] not in usuario["carreras"]:
+        raise HTTPException(403, "No tienes acceso a ese documento.")
+    if usuario["rol"] == "docente" and \
+            {"carrera": d["carrera"], "curso": d["curso"]} not in usuario["cursos_asignados"]:
+        raise HTTPException(403, "No tienes acceso a ese documento.")
 
 
-# ==================== ESTRUCTURA ACADEMICA (leer: publico; crear: coordinacion) ====================
+# ==================== ESTRUCTURA ACADEMICA (leer: con sesion; crear: admin / coordinacion) ====================
 @app.get("/salud")
 def salud():
     """Estado del servicio."""
@@ -182,8 +185,9 @@ def salud():
 
 
 @app.get("/facultades")
-def get_facultades():
-    """Facultades con sus carreras."""
+def get_facultades(authorization: str = Header(None)):
+    """Facultades con sus carreras. Solo administrador (estructura institucional)."""
+    _exigir(authorization, "administrador")
     return bd.facultades()
 
 
@@ -201,12 +205,20 @@ def crear_facultad(nombre: str = Form(...), authorization: str = Header(None)):
 
 
 @app.get("/carreras")
-def get_carreras():
-    return rag.carreras()
+def get_carreras(authorization: str = Header(None)):
+    """Carreras: el administrador las ve todas; los demas roles, solo las suyas."""
+    usuario = _exigir(authorization)
+    if usuario["rol"] == "administrador":
+        return rag.carreras()
+    return usuario["carreras"]
 
 
 @app.get("/carreras/{carrera}/cursos")
-def get_cursos(carrera: str):
+def get_cursos(carrera: str, authorization: str = Header(None)):
+    """Cursos de una carrera. Solo quien pertenece a ella (o el administrador)."""
+    usuario = _exigir(authorization)
+    if usuario["rol"] != "administrador":
+        _exigir_carrera(usuario, carrera)
     return rag.cursos(carrera)
 
 
@@ -358,8 +370,17 @@ def actualizar_usuario_api(usuario: str, cambio: UsuarioCambio,
     elif not _coord_puede_tocar(actor, objetivo):
         raise HTTPException(403, "No puedes gestionar a ese usuario.")
     _validar_alta_coord(actor, cambio.rol, cambio.carreras)
+    carreras = cambio.carreras
+    if actor["rol"] == "coordinacion" and actor["usuario"] != usuario:
+        # la coordinacion no altera lo que el usuario tiene en carreras ajenas
+        ajenas = sorted(set(objetivo["carreras"]) - set(actor["carreras"]))
+        if ajenas and any(v is not None for k, v in cambio.model_dump().items() if k != "carreras"):
+            raise HTTPException(403, "Ese usuario tambien pertenece a otra carrera: solo "
+                                     "puedes cambiar su pertenencia a las tuyas.")
+        if carreras is not None:
+            carreras = sorted(set(carreras) | set(ajenas))
     try:
-        auth.actualizar_usuario(usuario, cambio.rol, cambio.carreras, cambio.nuevo_password,
+        auth.actualizar_usuario(usuario, cambio.rol, carreras, cambio.nuevo_password,
                                 cambio.activo, cambio.nombre, cambio.correo)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -379,6 +400,9 @@ def borrar_usuario_api(usuario: str, authorization: str = Header(None)):
         raise HTTPException(404, "Usuario no encontrado.")
     if not _coord_puede_tocar(actor, objetivo):
         raise HTTPException(403, "No puedes gestionar a ese usuario.")
+    if actor["rol"] == "coordinacion" and set(objetivo["carreras"]) - set(actor["carreras"]):
+        raise HTTPException(403, "Ese usuario tambien pertenece a otra carrera: "
+                                 "retiralo de la tuya en lugar de eliminarlo.")
     auth.borrar_usuario(usuario)
     bd.log("borrar_usuario", usuario, actor["usuario"])
     return {"ok": True}
@@ -388,6 +412,13 @@ def borrar_usuario_api(usuario: str, authorization: str = Header(None)):
 @app.post("/preguntar")
 def preguntar(c: Consulta, authorization: str = Header(None)):
     """Responde con corpus autorizado; solo estudiantes con sesion valida en V1."""
+    # V1: el chat es autenticado y se restringe a las carreras del estudiante.
+    # El widget sin sesion es una extension FUERA del alcance V1.
+    # La sesion y la carrera se validan ANTES que nada: sin permiso no se
+    # revela ni siquiera si una carrera o un curso existen.
+    usuario = _exigir(authorization, "estudiante")
+    _exigir_carrera(usuario, c.carrera)
+
     if not c.pregunta.strip():
         raise HTTPException(400, "La pregunta esta vacia.")
     if c.carrera not in rag.carreras():
@@ -396,11 +427,6 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
         raise HTTPException(404, "Curso no encontrado.")
     if c.modo == "curso" and not c.curso:
         raise HTTPException(400, "Para responder desde un curso, elige el curso.")
-
-    # V1: el chat es autenticado y se restringe a las carreras del estudiante.
-    # El widget sin sesion es una extension FUERA del alcance V1.
-    usuario = _exigir(authorization, "estudiante")
-    _exigir_carrera(usuario, c.carrera)
 
     # Nunca tolerar de forma silenciosa un id de conversacion ajeno.
     # El chat no debe responder ni escribir datos bajo un hilo de otro usuario.
@@ -411,12 +437,15 @@ def preguntar(c: Consulta, authorization: str = Header(None)):
     contexto = memoria.preparar(c.conversacion_id) if es_suya else None
 
     r = rag.responder(c.pregunta, c.carrera, c.curso, contexto, c.modo)
-    metricas.registrar(c.pregunta, r["con_respaldo"], c.carrera,
-                       c.curso if r["modo"] != "general" else None, r["modo"],
-                       usuario["usuario"] if usuario else None)
-    # cada cita guarda documento y VERSION usados (trazabilidad historica)
+    # analitica minimizada: solo la categoria de la pregunta, sin texto ni
+    # usuario. Los saludos y agradecimientos no son consultas: no se cuentan.
+    if not r.get("social"):
+        metricas.registrar(c.pregunta, r["con_respaldo"], c.carrera,
+                           c.curso if r["modo"] != "general" else None, r["modo"])
+    # cada cita guarda documento y VERSION usados (trazabilidad historica).
+    # No se expone la ruta del archivo: la pagina se pide por documento y version.
     citas = [{"fuente": ci["fuente"], "pagina": ci["pagina"], "seccion": ci["seccion"],
-              "documento_id": ci["documento_id"], "version": ci["version"], "ref": ci["path"]}
+              "documento_id": ci["documento_id"], "version": ci["version"]}
              for ci in r["citas"]]
 
     # persistencia del historial (solo si la conversacion es suya)
@@ -446,8 +475,8 @@ def listar_conversaciones(authorization: str = Header(None)):
 
 @app.post("/conversaciones")
 def crear_conversacion_api(titulo: str = Form(""), authorization: str = Header(None)):
-    """Crea una conversacion nueva para el usuario y devuelve su id."""
-    usuario = _exigir(authorization)
+    """Crea una conversacion nueva y devuelve su id. Solo estudiantes (el chat es suyo)."""
+    usuario = _exigir(authorization, "estudiante")
     cid = historial.crear_conversacion(usuario["usuario"], titulo)
     return {"id": cid}
 
@@ -579,45 +608,44 @@ def vigencia_documento(doc_id: int, v: Vigencia, authorization: str = Header(Non
 
 @app.delete("/documentos/{doc_id}")
 def borrar_documento(doc_id: int, authorization: str = Header(None)):
-    """Elimina un documento con todas sus versiones."""
+    """
+    Elimina un documento con todas sus versiones. Si alguna respuesta del chat
+    lo cita, se rechaza (409): las citas deben poder abrir la version usada.
+    """
     actor = _exigir(authorization, "docente", "coordinacion")
     d = _doc_gestionable(doc_id, actor)
-    ingest.borrar_documento(doc_id)
+    try:
+        ingest.borrar_documento(doc_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     bd.log("borrar_documento", _ambito(d), actor["usuario"])
     return {"ok": True}
 
 
-def _archivo_permitido(authorization, ref):
+@app.get("/documentos/{doc_id}/versiones/{numero}/paginas/{pagina}")
+def pagina_de_version(doc_id: int, numero: int, pagina: int,
+                      authorization: str = Header(None)):
     """
-    Ruta del PDF pedido por una cita, si el usuario pertenece a la carrera del
-    documento. Asi nadie descarga documentos de carreras ajenas.
+    PNG de una pagina de una VERSION concreta de un documento (visor de citas).
+    La cita trae documento y version, y el archivo se busca en el catalogo: asi
+    se abre siempre la version que respaldo la respuesta, aunque despues se
+    haya publicado otra. El cliente nunca envia rutas de archivo.
     """
     usuario = _exigir(authorization)
-    destino = _resolver_ruta(ref)
-    d = bd.documento_de_ruta(ref)
-    if not d or d["carrera"] not in usuario["carreras"]:
-        raise HTTPException(403, "No tienes acceso a ese documento.")
-    return destino
-
-
-@app.get("/documentos/pagina")
-def pagina_documento(ref: str = Query(...), pagina: int = 1,
-                     authorization: str = Header(None)):
-    """PNG de una pagina del PDF (para el visor de citas)."""
-    destino = _archivo_permitido(authorization, ref)
+    v = bd.version_de(doc_id, numero)
+    if not v:
+        raise HTTPException(404, "Esa version del documento no existe.")
+    _exigir_lectura_doc(usuario, v)
+    destino = os.path.join(rag.DOCS, v["ruta"])
+    if not os.path.exists(destino):
+        raise HTTPException(404, "El archivo de esa version ya no esta disponible.")
     total = pdfreader.num_paginas(destino)
-    pagina = max(1, min(pagina, total))
+    if not 1 <= pagina <= total:
+        raise HTTPException(404, f"Ese documento tiene {total} paginas.")
     png = pdfreader.render_png(destino, pagina)
     return Response(content=png, media_type="image/png",
                     headers={"X-Total-Paginas": str(total),
                              "Cache-Control": "private, max-age=3600"})
-
-
-@app.get("/documentos/info")
-def info_documento(ref: str = Query(...), authorization: str = Header(None)):
-    """Info del PDF (numero de paginas)."""
-    destino = _archivo_permitido(authorization, ref)
-    return {"nombre": os.path.basename(destino), "paginas": pdfreader.num_paginas(destino)}
 
 
 # ==================== METRICAS ====================
@@ -626,7 +654,7 @@ def get_metricas(carrera: Optional[str] = None,
                  curso: Optional[str] = None,
                  authorization: str = Header(None)):
     """
-    Agregados (nunca se muestra quien pregunto).
+    Agregados por categoria (no hay preguntas ni usuarios: no se almacenan).
       - Coordinacion: una carrera suya completa, o uno de sus cursos.
       - Docente: solo un curso que tenga asignado.
     """
@@ -637,7 +665,9 @@ def get_metricas(carrera: Optional[str] = None,
         if not curso:
             raise HTTPException(400, "El docente debe indicar un curso.")
         _exigir_ambito_docs(usuario, carrera, curso)
-    return metricas.resumen(metricas.listar(carrera, curso))
+    elif curso and curso not in rag.cursos(carrera):
+        raise HTTPException(404, "Curso no encontrado.")
+    return metricas.resumen(carrera, curso)
 
 
 # ==================== CONFIGURACION DEL SISTEMA (solo administrador) ====================

@@ -154,12 +154,13 @@ export const api = {
     return pedir("/metricas?" + q);
   },
 
-  // visor PDF: la API exige Bearer; NO se envia el token por URL.
-  paginaDocumento: async (ref, pagina) => {
+  // visor de citas: pagina de la VERSION exacta del documento que respaldo la
+  // respuesta. La API exige Bearer; el token NUNCA viaja en la URL.
+  paginaDocumento: async (documentoId, version, pagina) => {
     const token = getToken();
     if (!token) throw new Error("Debes iniciar sesion para abrir la fuente.");
-    const query = new URLSearchParams({ ref, pagina: String(pagina || 1) });
-    const res = await fetch(BASE + "/documentos/pagina?" + query, {
+    const ruta = `/documentos/${documentoId}/versiones/${version}/paginas/${pagina || 1}`;
+    const res = await fetch(BASE + ruta, {
       headers: { Authorization: "Bearer " + token },
     });
     if (!res.ok) {
@@ -172,7 +173,6 @@ export const api = {
     }
     return await res.blob();
   },
-  infoDoc: (ref) => pedir("/documentos/info?" + new URLSearchParams({ ref })),
 
   // ---------- gestion de usuarios (solo coord) ----------
   usuarios: {

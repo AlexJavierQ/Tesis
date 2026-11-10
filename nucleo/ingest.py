@@ -261,10 +261,18 @@ def cambiar_estado(doc_id, activo):
 
 
 def borrar_documento(doc_id):
-    """Elimina un documento: sus vectores, su registro y sus archivos (todas las versiones)."""
+    """
+    Elimina un documento: sus vectores, su registro y sus archivos (todas las versiones).
+    Si alguna respuesta del chat lo cita, NO se borra (las citas deben poder
+    abrir siempre la version que se uso): en ese caso se desactiva.
+    """
     d = bd.documento_por_id(doc_id)
     if not d:
         raise ValueError("Documento no encontrado.")
+    citas = bd.respuestas_que_citan(doc_id)
+    if citas:
+        raise ValueError(f"No se puede eliminar: {citas} respuesta(s) del chat citan este "
+                         "documento. Desactívalo para que el asistente deje de usarlo.")
     vectorstore.borrar({"documento_id": doc_id})
     for ruta in bd.borrar_documento(doc_id):
         archivo = os.path.join(DOCS, ruta)
