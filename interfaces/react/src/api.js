@@ -154,11 +154,23 @@ export const api = {
     return pedir("/metricas?" + q);
   },
 
-  // visor PDF
-  urlPagina: (ref, pagina) => {
-    const t = getToken();
-    return BASE + "/documentos/pagina?" + new URLSearchParams({ ref, pagina })
-      + (t ? "&_t=" + encodeURIComponent(t) : "");
+  // visor PDF: la API exige Bearer; NO se envia el token por URL.
+  paginaDocumento: async (ref, pagina) => {
+    const token = getToken();
+    if (!token) throw new Error("Debes iniciar sesion para abrir la fuente.");
+    const query = new URLSearchParams({ ref, pagina: String(pagina || 1) });
+    const res = await fetch(BASE + "/documentos/pagina?" + query, {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!res.ok) {
+      let msg = "No se pudo abrir el documento (" + res.status + ").";
+      try {
+        const err = await res.json();
+        if (err.detail) msg = err.detail;
+      } catch { /* respuesta no JSON */ }
+      throw new Error(msg);
+    }
+    return await res.blob();
   },
   infoDoc: (ref) => pedir("/documentos/info?" + new URLSearchParams({ ref })),
 
