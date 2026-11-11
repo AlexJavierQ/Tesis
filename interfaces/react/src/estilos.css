@@ -532,7 +532,7 @@ input[type="checkbox"] {
 .tema:first-child { padding-top: 0; }
 .tema-cabecera { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .tema-texto { font-weight: 550; }
-.tema-n { font-weight: 700; color: var(--primario); font-variant-numeric: tabular-nums; }
+.tema-n { font-weight: 700; color: var(--primario); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
 .tema-meta { font-size: 13px; color: var(--texto-3); margin-top: 2px; }
 .barra-progreso { height: 6px; background: var(--superficie-2); border-radius: 999px; margin-top: 8px; overflow: hidden; }
 .barra-progreso span { display: block; height: 100%; background: var(--primario); border-radius: 999px; }
@@ -596,10 +596,15 @@ input[type="checkbox"] {
 /* V1: visor de citas con acceso autenticado; no se exponen tokens en URLs. */
 .cita-boton {
   font: inherit;
+  font-size: 13px;
   cursor: pointer;
   text-align: left;
   border: 1px solid var(--borde, #d5dde5);
+  /* un nombre de archivo largo no debe desbordar la burbuja del chat */
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
+.cita-boton small { white-space: nowrap; }
 .cita-boton:hover:not(:disabled) { filter: brightness(.94); }
 .cita-boton:focus-visible { outline: 3px solid #2469a8; outline-offset: 2px; }
 .cita-boton:disabled { cursor: not-allowed; opacity: .6; }
